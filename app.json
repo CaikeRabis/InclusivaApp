@@ -4,26 +4,42 @@
     "slug": "InclusivaApp",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logo_2_inclusiva.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo_1_inclusiva.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.caikerabis.inclusivaapp"
     },
     "android": {
+      "package": "com.caikerabis.inclusivaapp",
+      "permissions": [
+        "NFC",
+        "READ_NFC",
+        "WRITE_NFC",
+        "android.permission.NFC"
+      ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/logo_1_inclusiva.png",
+        "backgroundColor": "#0047BB"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/logo_2_inclusiva.png"
+    },
+    "plugins": [
+      "react-native-nfc-manager"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2f38a556-a565-4ffe-be3e-0a8a95df6d1d"
+      }
     }
   }
 }

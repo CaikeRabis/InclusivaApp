@@ -6,6 +6,7 @@ import NFCScreen from './src/screens/NFCScreen';
 import ExploreScreen from './src/screens/ExploreScreen';
 import EventDetailScreen from './src/screens/EventDetailScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import AdminScreen from './src/screens/AdminScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -24,6 +25,7 @@ export default function App() {
         <Stack.Screen name="EventDetail" component={EventDetailScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="NFC" component={NFCScreen} />
+        <Stack.Screen name="Admin" component={AdminScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

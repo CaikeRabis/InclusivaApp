@@ -8,8 +8,10 @@ import {
   TouchableOpacity,
   SafeAreaView,
   StatusBar,
+  Image,
+  useWindowDimensions,
 } from 'react-native';
-import { Accessibility, Search, X } from 'lucide-react-native';
+import { Accessibility, Search, X, Settings } from 'lucide-react-native';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOW } from '../styles/theme';
 import FilterTabs from '../components/FilterTabs';
 import PlaceCard from '../components/PlaceCard';
@@ -19,6 +21,8 @@ import TrailTimeline from '../components/TrailTimeline';
 
 
 export default function HomeScreen({ navigation }) {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
   const [activeFilter, setActiveFilter] = useState('visual');
   const [activeTab, setActiveTab] = useState('home');
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,20 +49,38 @@ export default function HomeScreen({ navigation }) {
           {/* Logo + Greeting */}
           <View style={styles.headerLeft}>
             <View style={styles.logoCircle}>
-              <Accessibility size={24} color={COLORS.primary} strokeWidth={2} />
+              <Image
+                source={require('../../assets/logo_2_inclusiva.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
             <View>
-              <Text style={styles.greeting}>Oi, Caike</Text>
+              <Text style={styles.greeting}>Oi, Caike!</Text>
               <Text style={styles.subGreeting}>{getGreeting()}!</Text>
             </View>
           </View>
 
-          {/* Menu Button */}
-          <TouchableOpacity style={styles.menuButton} activeOpacity={0.7}>
-            <View style={styles.menuLine} />
-            <View style={[styles.menuLine, styles.menuLineShort]} />
-            <View style={styles.menuLine} />
-          </TouchableOpacity>
+          {/* Right actions */}
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.adminButton}
+              activeOpacity={0.8}
+              onPress={() => navigation.navigate('Admin')}
+            >
+              <Settings
+                size={20}
+                color="#ffffff"
+                style={styles.adminButtonIcon}
+              />
+              {isDesktop && <Text style={styles.adminButtonLabel}>Admin</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuButton} activeOpacity={0.7}>
+              <View style={styles.menuLine} />
+              <View style={[styles.menuLine, styles.menuLineShort]} />
+              <View style={styles.menuLine} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Search Bar */}
@@ -105,8 +127,8 @@ export default function HomeScreen({ navigation }) {
               key={item.id}
               place={item}
               onPress={() => navigation.navigate('NFC', { placeId: item.id })}
-              onAudioPress={() => {}}
-              onInfoPress={() => {}}
+              onAudioPress={() => { }}
+              onInfoPress={() => { }}
             />
           ))}
         </View>
@@ -119,13 +141,13 @@ export default function HomeScreen({ navigation }) {
       </ScrollView>
 
       {/* ───── BOTTOM NAV ───── */}
-      <BottomNavBar 
-        activeTab={activeTab} 
+      <BottomNavBar
+        activeTab={activeTab}
         onTabChange={(tab) => {
           setActiveTab(tab);
           if (tab === 'explore') navigation.navigate('Explore');
           if (tab === 'settings') navigation.navigate('Settings');
-        }} 
+        }}
       />
     </SafeAreaView>
   );
@@ -167,6 +189,10 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.4)',
   },
+  logoImage: {
+    width: 32,
+    height: 32,
+  },
   logoEmoji: {
     fontSize: 24,
   },
@@ -180,6 +206,30 @@ const styles = StyleSheet.create({
     fontSize: FONTS.sizes.md,
     color: 'rgba(255,255,255,0.75)',
     fontWeight: '400',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  adminButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  adminButtonIcon: {
+    fontSize: 16,
+  },
+  adminButtonLabel: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
   },
   menuButton: {
     width: 40,

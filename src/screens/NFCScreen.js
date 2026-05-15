@@ -19,6 +19,7 @@ import { COLORS, FONTS, SPACING, RADIUS, SHADOW } from '../styles/theme';
 import { getPlaceById } from '../data/places';
 import { getObraById } from '../data/obras';
 import { useNfcReader } from '../hooks/useNfcReader';
+import { Platform } from 'react-native';
 
 export default function NFCScreen({ route, navigation }) {
   const placeId = route?.params?.placeId;
@@ -31,6 +32,43 @@ export default function NFCScreen({ route, navigation }) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
+
+  const [preferredVoice, setPreferredVoice] = useState(null);
+
+  useEffect(() => {
+    async function setupBestVoice() {
+      const voices = await Speech.getAvailableVoicesAsync();
+      
+      // Filtra vozes em pt-BR
+      const ptBrVoices = voices.filter(v => 
+        v.language.startsWith('pt-BR') || v.language === 'pt-BR'
+      );
+
+      if (ptBrVoices.length > 0) {
+        // Lógica de Prioridade:
+        // 1. Vozes "Enhanced" no iOS (qualidade 2)
+        // 2. Vozes neurais ou específicas (como 'Luciana' ou 'Felipe')
+        // 3. Primeira disponível se nada for encontrado
+        const best = ptBrVoices.find(v => v.quality === Speech.VoiceQuality.Enhanced) || 
+                     ptBrVoices.find(v => v.name.toLowerCase().includes('google')) ||
+                     ptBrVoices[0];
+        
+        setPreferredVoice(best);
+      }
+    }
+    setupBestVoice();
+  }, []);
+
+  // Função de fala atualizada
+  const falarComVozPremium = (texto) => {
+    Speech.stop();
+    Speech.speak(texto, {
+      voice: preferredVoice?.identifier, // Aqui passamos o ID da voz selecionada
+      language: 'pt-BR',
+      pitch: 1.0,
+      rate: 0.85, // Velocidade levemente reduzida para soar mais natural
+    });
+  };
 
   // Fade-in entrance animation
   useEffect(() => {
@@ -87,26 +125,16 @@ export default function NFCScreen({ route, navigation }) {
       setModalVisible(true);
 
       if (obra) {
-        Speech.speak(`Obra identificada: ${obra.titulo}.`, {
-          language: 'pt-BR',
-          pitch: 1.0,
-          rate: 0.95,
-        });
+        falarComVozPremium(`Obra identificada: ${obra.titulo}.`);
       } else {
-        Speech.speak('Obra não identificada neste roteiro.', { language: 'pt-BR' });
+        falarComVozPremium('Obra não identificada neste roteiro.');
       }
     }
   }, [scannedId]);
 
   const handleAudioDescricao = () => {
     if (currentObra) {
-      // Para qualquer áudio anterior antes de iniciar o novo
-      Speech.stop();
-      Speech.speak(currentObra.resumo, {
-        language: 'pt-BR',
-        pitch: 1.0,
-        rate: 0.9, // Ligeiramente mais devagar para melhor compreensão
-      });
+      falarComVozPremium(currentObra.resumo);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
   };
