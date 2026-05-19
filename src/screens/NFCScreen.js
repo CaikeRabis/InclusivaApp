@@ -25,7 +25,7 @@ export default function NFCScreen({ route, navigation }) {
   const placeId = route?.params?.placeId;
   const place = getPlaceById(placeId) || {};
   
-  const { isScanning, scannedId, error, startScanning, cancelScanning, simulateScan, nfcSupported } = useNfcReader();
+  const { isScanning, scannedId, error, startScanning, cancelScanning, nfcSupported } = useNfcReader();
   const [modalVisible, setModalVisible] = useState(false);
   const [currentObra, setCurrentObra] = useState(null);
 
@@ -125,7 +125,7 @@ export default function NFCScreen({ route, navigation }) {
       setModalVisible(true);
 
       if (obra) {
-        falarComVozPremium(`Obra identificada: ${obra.titulo}.`);
+        falarComVozPremium(`Obra identificada: ${obra.titulo}. ${obra.resumo}`);
       } else {
         falarComVozPremium('Obra não identificada neste roteiro.');
       }
@@ -323,13 +323,11 @@ export default function NFCScreen({ route, navigation }) {
       <View style={styles.bottomAction}>
         <TouchableOpacity
           style={styles.scanButton}
-          onPress={isScanning ? cancelScanning : (nfcSupported ? startScanning : simulateScan)}
-          onLongPress={simulateScan}
+          onPress={isScanning ? cancelScanning : startScanning}
           activeOpacity={0.85}
           accessible={true}
           accessibilityRole="button"
           accessibilityLabel={isScanning ? "Cancelar leitura NFC" : "Iniciar leitura NFC"}
-          accessibilityHint="Dê um toque longo para simular a leitura se estiver testando no Expo Go."
         >
           {isScanning ? (
             <X size={20} color={COLORS.white} strokeWidth={2} />
@@ -342,7 +340,7 @@ export default function NFCScreen({ route, navigation }) {
         </TouchableOpacity>
 
         <Text style={styles.bottomHint}>
-          Certifique-se de que o NFC está ativado. Toque longo para testar simulação.
+          Certifique-se de que o NFC está ativado e as permissões foram concedidas.
         </Text>
       </View>
 

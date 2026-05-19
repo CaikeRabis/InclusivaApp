@@ -33,6 +33,9 @@
     "web": {
       "favicon": "./assets/logo_2_inclusiva.png"
     },
+    "updates": {
+      "url": "https://u.expo.dev/2f38a556-a565-4ffe-be3e-0a8a95df6d1d"
+    },
     "plugins": [
       "react-native-nfc-manager"
     ],
@@ -40,6 +43,9 @@
       "eas": {
         "projectId": "2f38a556-a565-4ffe-be3e-0a8a95df6d1d"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }
