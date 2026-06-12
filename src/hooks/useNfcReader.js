@@ -53,21 +53,52 @@ export function useNfcReader() {
     setError(null);
 
     try {
-      // Pede permissão ao usuário (no Android) ou exibe o modal do sistema (no iOS)
       await NfcManager.requestTechnology(NfcTech.Ndef);
       const tag = await NfcManager.getTag();
       
-      let readId = "1"; // Fallback
+      let readId = '1'; // Fallback
+
       if (tag.ndefMessage && tag.ndefMessage.length > 0) {
-        const payload = tag.ndefMessage[0].payload;
-        // Pula os primeiros bytes dependendo do language code
-        const textBytes = payload.slice(3);
-        const text = String.fromCharCode.apply(null, textBytes);
-        
-        if (!isNaN(parseInt(text))) {
-          readId = text.trim();
+        const record = tag.ndefMessage[0];
+        const tnf = record.tnf;       // Type Name Format
+        const type = record.type;     // Tipo do registro
+        const payload = record.payload;
+
+        // ── URI Record (TNF=1, type=[0x55]='U') ─────────────────────────────
+        const isUriRecord = tnf === 1 && type && type.length === 1 && type[0] === 0x55;
+
+        // ── Text Record (TNF=1, type=[0x54]='T') ─────────────────────────────
+        const isTextRecord = tnf === 1 && type && type.length === 1 && type[0] === 0x54;
+
+        // ── MIME Record (TNF=2) ──────────────────────────────────────────────
+        const isMimeRecord = tnf === 2;
+
+        if (isUriRecord) {
+          // Pula o byte de identifier (1 byte) e lê o URI completo
+          const uriBytes = payload.slice(1);
+          const fullUri = String.fromCharCode.apply(null, uriBytes);
+          const parts = fullUri.replace('inclusiva://obra/', '').replace('obra/', '').split('/');
+          const candidate = parts[parts.length - 1].trim();
+          if (candidate && !isNaN(parseInt(candidate))) {
+            readId = candidate;
+          } else if (candidate) {
+            readId = candidate;
+          }
+        } else if (isTextRecord) {
+          // Pula status byte (1) + language code (status_byte & 0x3F bytes)
+          const statusByte = payload[0];
+          const langCodeLength = statusByte & 0x3f;
+          const textBytes = payload.slice(1 + langCodeLength);
+          const text = String.fromCharCode.apply(null, textBytes).trim();
+          readId = text || tag.id || '1';
+        } else if (isMimeRecord) {
+          // Payload do MIME type é direto o texto que enviamos
+          const text = String.fromCharCode.apply(null, payload).trim();
+          readId = text || tag.id || '1';
         } else {
-          readId = tag.id || "1";
+          // Fallback: tenta decodificar o payload como texto bruto
+          const rawText = String.fromCharCode.apply(null, payload).trim();
+          readId = rawText || tag.id || '1';
         }
       } else if (tag.id) {
         readId = tag.id;

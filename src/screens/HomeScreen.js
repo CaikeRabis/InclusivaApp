@@ -6,19 +6,19 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Image,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Accessibility, Search, X, Settings } from 'lucide-react-native';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOW } from '../styles/theme';
 import FilterTabs from '../components/FilterTabs';
 import PlaceCard from '../components/PlaceCard';
 import BottomNavBar from '../components/BottomNavBar';
 import { PLACES } from '../data/places';
+import { localService } from '../services/api';
 import TrailTimeline from '../components/TrailTimeline';
-
 
 export default function HomeScreen({ navigation }) {
   const { width } = useWindowDimensions();
@@ -27,6 +27,39 @@ export default function HomeScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('home');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
+  const [places, setPlaces] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const getPlaceImage = (img) => {
+    if (!img) return require('../../assets/ccbb.jpg');
+    if (typeof img === 'number') return img;
+    if (typeof img === 'string') {
+      if (img.startsWith('http')) return { uri: img };
+      if (img === '../../assets/ccbb.jpg') return require('../../assets/ccbb.jpg');
+      if (img === '../../assets/museu.jpg') return require('../../assets/museu.jpg');
+      if (img === '../../assets/teatro.jpg') return require('../../assets/teatro.jpg');
+    }
+    return require('../../assets/ccbb.jpg');
+  };
+
+  React.useEffect(() => {
+    async function loadPlaces() {
+      try {
+        const data = await localService.getAll();
+        const mapped = data.map((p) => ({
+          ...p,
+          id: p._id || p.id,
+          image: getPlaceImage(p.image),
+        }));
+        setPlaces(mapped);
+      } catch (err) {
+        setPlaces(PLACES);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadPlaces();
+  }, []);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -36,8 +69,9 @@ export default function HomeScreen({ navigation }) {
   };
 
   const filteredPlaces = activeFilter === 'todos'
-    ? PLACES
-    : PLACES.filter((p) => p.category === activeFilter);
+    ? places
+    : places.filter((p) => p.category === activeFilter);
+
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -56,8 +90,8 @@ export default function HomeScreen({ navigation }) {
               />
             </View>
             <View>
-              <Text style={styles.greeting}>Oi, Caike!</Text>
-              <Text style={styles.subGreeting}>{getGreeting()}!</Text>
+              <Text style={styles.greeting}>{getGreeting()}!</Text>
+              <Text style={styles.subGreeting}>Seja bem-vindo(a)!</Text>
             </View>
           </View>
 

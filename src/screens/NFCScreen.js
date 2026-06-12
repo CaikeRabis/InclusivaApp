@@ -4,30 +4,73 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
   Image,
   Animated,
   Easing,
   Modal,
   ScrollView,
+  AccessibilityInfo,
+  findNodeHandle,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
-import { Signal, CheckCircle2, AlertTriangle, Smartphone, Radio, Clock, Accessibility, ChevronLeft, Volume2, X } from 'lucide-react-native';
+import { Signal, CheckCircle2, AlertTriangle, Smartphone, Radio, Clock, Accessibility, ChevronLeft, Volume2, X, Hand } from 'lucide-react-native';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOW } from '../styles/theme';
 import { getPlaceById } from '../data/places';
 import { getObraById } from '../data/obras';
+import { localService, obraService } from '../services/api';
 import { useNfcReader } from '../hooks/useNfcReader';
 import { Platform } from 'react-native';
+import VLibrasPlayer from '../components/VLibrasPlayer';
 
 export default function NFCScreen({ route, navigation }) {
   const placeId = route?.params?.placeId;
-  const place = getPlaceById(placeId) || {};
+  const [place, setPlace] = useState({});
+
+  const getPlaceImage = (img) => {
+    if (!img) return require('../../assets/ccbb.jpg');
+    if (typeof img === 'number') return img;
+    if (typeof img === 'string') {
+      if (img.startsWith('http')) return { uri: img };
+      if (img === '../../assets/ccbb.jpg') return require('../../assets/ccbb.jpg');
+      if (img === '../../assets/museu.jpg') return require('../../assets/museu.jpg');
+      if (img === '../../assets/teatro.jpg') return require('../../assets/teatro.jpg');
+    }
+    return require('../../assets/ccbb.jpg');
+  };
+
+  useEffect(() => {
+    async function loadPlace() {
+      try {
+        const data = await localService.getById(placeId);
+        setPlace({
+          ...data,
+          id: data._id || data.id,
+          image: getPlaceImage(data.image),
+        });
+      } catch (err) {
+        setPlace(getPlaceById(placeId) || {});
+      }
+    }
+    if (placeId) {
+      loadPlace();
+    }
+  }, [placeId]);
+
   
-  const { isScanning, scannedId, error, startScanning, cancelScanning, nfcSupported } = useNfcReader();
+  const nfcIdParam = route?.params?.nfcId;
+  const { isScanning, scannedId: nfcScannedId, error, startScanning, cancelScanning, nfcSupported } = useNfcReader();
+  const [devScannedId, setDevScannedId] = useState(null);
+  const scannedId = nfcScannedId || nfcIdParam || devScannedId;
   const [modalVisible, setModalVisible] = useState(false);
   const [currentObra, setCurrentObra] = useState(null);
+  const [showLibras, setShowLibras] = useState(true);
+  const [speechRate, setSpeechRate] = useState(1.0);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  
+  const titleRef = useRef(null);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -59,15 +102,28 @@ export default function NFCScreen({ route, navigation }) {
     setupBestVoice();
   }, []);
 
-  // Função de fala atualizada
-  const falarComVozPremium = (texto) => {
+  // Função de fala atualizada com proteção para Cold Start
+  const falarComVozPremium = (texto, rate = speechRate) => {
     Speech.stop();
-    Speech.speak(texto, {
-      voice: preferredVoice?.identifier, // Aqui passamos o ID da voz selecionada
-      language: 'pt-BR',
-      pitch: 1.0,
-      rate: 0.85, // Velocidade levemente reduzida para soar mais natural
-    });
+    setIsSpeaking(true);
+    
+    // Pequeno delay para garantir que o Android inicialize a engine de TTS
+    // caso o app tenha acabado de ser acordado por um Deep Link NFC
+    setTimeout(() => {
+      const options = {
+        language: 'pt-BR',
+        pitch: 1.0,
+        rate: rate,
+        onDone: () => setIsSpeaking(false),
+        onStopped: () => setIsSpeaking(false),
+      };
+
+      if (preferredVoice && preferredVoice.identifier) {
+        options.voice = preferredVoice.identifier;
+      }
+
+      Speech.speak(texto, options);
+    }, 300);
   };
 
   // Fade-in entrance animation
@@ -116,32 +172,74 @@ export default function NFCScreen({ route, navigation }) {
     };
   }, []);
 
+  // Foca no título da obra ao abrir o modal
+  useEffect(() => {
+    if (modalVisible && currentObra && titleRef.current) {
+      setTimeout(() => {
+        const reactTag = findNodeHandle(titleRef.current);
+        if (reactTag) {
+          AccessibilityInfo.setAccessibilityFocus(reactTag);
+        }
+      }, 500); // Delay para garantir montagem
+    }
+  }, [modalVisible, currentObra]);
+
   // Monitorar mudanças no scannedId para abrir o modal
   useEffect(() => {
-    if (scannedId) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const obra = getObraById(scannedId);
-      setCurrentObra(obra);
-      setModalVisible(true);
-
-      if (obra) {
-        falarComVozPremium(`Obra identificada: ${obra.titulo}. ${obra.resumo}`);
-      } else {
-        falarComVozPremium('Obra não identificada neste roteiro.');
+    async function fetchScannedObra() {
+      if (scannedId) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        try {
+          const obra = await obraService.getByNfcId(scannedId);
+          setCurrentObra(obra);
+          setModalVisible(true);
+          if (obra) {
+            falarComVozPremium(`Obra identificada: ${obra.titulo}. ${obra.resumo}`);
+          } else {
+            falarComVozPremium('Obra não identificada neste roteiro.');
+          }
+        } catch (err) {
+          console.warn('Erro ao carregar obra do NFC:', err.message);
+          // Fallback para mock local
+          const obra = getObraById(scannedId);
+          setCurrentObra(obra);
+          setModalVisible(true);
+          if (obra) {
+            falarComVozPremium(`Obra identificada: ${obra.titulo}. ${obra.resumo}`);
+          } else {
+            falarComVozPremium('Obra não identificada neste roteiro.');
+          }
+        }
       }
     }
+    fetchScannedObra();
   }, [scannedId]);
+
 
   const handleAudioDescricao = () => {
     if (currentObra) {
-      falarComVozPremium(currentObra.resumo);
+      falarComVozPremium(currentObra.resumo, speechRate);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const cycleSpeechRate = () => {
+    let nextRate = 1.0;
+    if (speechRate === 1.0) nextRate = 1.5;
+    else if (speechRate === 1.5) nextRate = 2.0;
+    
+    setSpeechRate(nextRate);
+    
+    if (isSpeaking && currentObra) {
+      falarComVozPremium(currentObra.resumo, nextRate);
     }
   };
 
   const fecharModal = () => {
     Speech.stop();
+    setIsSpeaking(false);
     setModalVisible(false);
+    setDevScannedId(null);
   };
 
   const getStatusConfig = () => {
@@ -342,6 +440,19 @@ export default function NFCScreen({ route, navigation }) {
         <Text style={styles.bottomHint}>
           Certifique-se de que o NFC está ativado e as permissões foram concedidas.
         </Text>
+
+        {__DEV__ && (
+          <TouchableOpacity
+            style={[styles.scanButton, { backgroundColor: COLORS.primaryDark, marginTop: SPACING.md }]}
+            onPress={() => setDevScannedId('1')}
+            activeOpacity={0.85}
+          >
+            <Smartphone size={20} color={COLORS.white} strokeWidth={2} />
+            <Text style={styles.scanButtonText}>
+              Simular Leitura (Modo DEV)
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* ───── MODAL DE DETALHES DA OBRA ───── */}
@@ -355,7 +466,7 @@ export default function NFCScreen({ route, navigation }) {
           <View style={styles.modalContent}>
             {/* Header do Modal */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle} accessibilityRole="header">
+              <Text ref={titleRef} style={styles.modalTitle} accessibilityRole="header">
                 Detalhes da Obra
               </Text>
               <TouchableOpacity 
@@ -371,21 +482,70 @@ export default function NFCScreen({ route, navigation }) {
 
             {currentObra ? (
               <ScrollView style={styles.modalScroll}>
-                <Text style={styles.obraTitle}>{currentObra.titulo}</Text>
-                <Text style={styles.obraAutor}>Por {currentObra.autor}</Text>
-                
-                <Text style={styles.obraResumo}>{currentObra.resumo}</Text>
+                {/* ───── VLIBRAS AVATAR SECTION ───── */}
+                {showLibras && (
+                  <View style={styles.vlibrasCard}>
+                    <View style={styles.vlibrasHeader}>
+                      <View style={styles.vlibrasHeaderLeft}>
+                        <Hand size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
+                        <Text style={styles.vlibrasHeaderTitle}>Tradução em Libras</Text>
+                      </View>
+                      <View style={styles.vlibrasLiveBadge}>
+                        <View style={styles.vlibrasLiveDot} />
+                        <Text style={styles.vlibrasLiveText}>AO VIVO</Text>
+                      </View>
+                    </View>
+                    <View style={styles.vlibrasContainer}>
+                      <VLibrasPlayer texto={currentObra.resumo} height={380} />
+                    </View>
+                  </View>
+                )}
 
-                <TouchableOpacity 
-                  style={styles.audioButton}
-                  onPress={handleAudioDescricao}
-                  accessible={true}
-                  accessibilityRole="button"
-                  accessibilityLabel="Ouvir Audiodescrição. O leitor de tela narrará a descrição da obra."
-                >
-                  <Volume2 size={24} color={COLORS.white} style={{ marginRight: SPACING.sm }} />
-                  <Text style={styles.audioButtonText}>Ouvir Audiodescrição</Text>
-                </TouchableOpacity>
+                {/* ───── ACTION BUTTONS ───── */}
+                <View style={styles.actionButtonsRow}>
+                  <TouchableOpacity 
+                    style={styles.audioButton}
+                    onPress={handleAudioDescricao}
+                    accessible={true}
+                    accessibilityRole="button"
+                    accessibilityLabel="Ouvir Audiodescrição. O leitor de tela narrará a descrição da obra."
+                  >
+                    <Volume2 size={20} color={COLORS.white} style={{ marginRight: SPACING.sm }} />
+                    <Text style={styles.audioButtonText}>Ouvir Áudio</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={[styles.librasButton, showLibras && styles.librasButtonActive]}
+                    onPress={() => setShowLibras(!showLibras)}
+                    accessible={true}
+                    accessibilityRole="button"
+                    accessibilityLabel={showLibras ? 'Esconder tradução em Libras' : 'Mostrar tradução em Libras'}
+                    accessibilityState={{ selected: showLibras }}
+                  >
+                    <Hand size={20} color={showLibras ? COLORS.white : COLORS.primary} style={{ marginRight: SPACING.sm }} />
+                    <Text style={[styles.librasButtonText, showLibras && styles.librasButtonTextActive]}>
+                      {showLibras ? 'Libras ✓' : 'Ver Libras'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* ───── SPEECH RATE CONTROL ───── */}
+                <View style={styles.rateControlContainer}>
+                  <Text style={styles.rateControlLabel}>Velocidade do Áudio:</Text>
+                  <TouchableOpacity 
+                    style={styles.rateButton}
+                    onPress={cycleSpeechRate}
+                    accessible={true}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Velocidade atual: ${speechRate} vezes. Toque para alterar.`}
+                  >
+                    <Text style={styles.rateButtonText}>{speechRate}x</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={{ color: '#10B981', fontSize: 12, textAlign: 'center', marginTop: 8, marginBottom: SPACING.lg, fontWeight: 'bold' }}>
+                  ✓ Modo Acessibilidade V4 (Foco + Velocidade Áudio)
+                </Text>
               </ScrollView>
             ) : (
               <View style={styles.errorContainer}>
@@ -704,20 +864,138 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: SPACING.xl,
   },
+  // ── Action Buttons Row
+  actionButtonsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
   audioButton: {
-    backgroundColor: COLORS.primary, // #1A56DB (Azul do app)
+    flex: 1,
+    minWidth: 140,
+    backgroundColor: COLORS.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     borderRadius: RADIUS.lg,
     ...SHADOW.card,
   },
   audioButtonText: {
     color: COLORS.white,
-    fontSize: FONTS.sizes.lg,
+    fontSize: FONTS.sizes.md,
     fontWeight: '800',
   },
+  librasButton: {
+    flex: 1,
+    minWidth: 140,
+    backgroundColor: COLORS.white,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.lg,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+  },
+  librasButtonActive: {
+    backgroundColor: COLORS.primaryDark,
+    borderColor: COLORS.primaryDark,
+  },
+  librasButtonText: {
+    color: COLORS.primary,
+    fontSize: FONTS.sizes.md,
+    fontWeight: '800',
+  },
+  librasButtonTextActive: {
+    color: COLORS.white,
+  },
+
+  // ── Speech Rate Control
+  rateControlContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: '#F3F4F6',
+    borderRadius: RADIUS.md,
+  },
+  rateControlLabel: {
+    fontSize: FONTS.sizes.sm,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginRight: SPACING.md,
+  },
+  rateButton: {
+    backgroundColor: COLORS.primaryLight,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+  },
+  rateButtonText: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '800',
+    color: COLORS.white,
+  },
+
+  // ── VLibras Card
+  vlibrasCard: {
+    marginTop: SPACING.lg,
+    borderRadius: RADIUS.lg,
+    backgroundColor: '#F8FAFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F4',
+    overflow: 'hidden',
+  },
+  vlibrasHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    backgroundColor: '#EEF2FF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F4',
+  },
+  vlibrasHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  vlibrasHeaderTitle: {
+    fontSize: FONTS.sizes.md,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  vlibrasLiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DEF7EC',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  vlibrasLiveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+    marginRight: 4,
+  },
+  vlibrasLiveText: {
+    fontSize: FONTS.sizes.xs,
+    fontWeight: '800',
+    color: '#065F46',
+    letterSpacing: 0.5,
+  },
+  vlibrasContainer: {
+    width: '100%',
+    minHeight: 380,
+  },
+
   errorContainer: {
     alignItems: 'center',
     justifyContent: 'center',

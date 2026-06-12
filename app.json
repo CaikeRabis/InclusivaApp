@@ -2,11 +2,12 @@
   "expo": {
     "name": "InclusivaApp",
     "slug": "InclusivaApp",
+    "scheme": "inclusiva",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logo_2_inclusiva.png",
+    "icon": "./assets/logo-nova.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/logo_1_inclusiva.png",
       "resizeMode": "contain",
@@ -25,10 +26,26 @@
         "android.permission.NFC"
       ],
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo_1_inclusiva.png",
+        "foregroundImage": "./assets/logo-nova.png",
         "backgroundColor": "#0047BB"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "inclusiva",
+              "host": "obra"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/logo_2_inclusiva.png"
@@ -37,7 +54,8 @@
       "url": "https://u.expo.dev/2f38a556-a565-4ffe-be3e-0a8a95df6d1d"
     },
     "plugins": [
-      "react-native-nfc-manager"
+      "react-native-nfc-manager",
+      "./plugins/withNfcIntentFilter"
     ],
     "extra": {
       "eas": {

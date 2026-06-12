@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   StatusBar,
   FlatList,
   TouchableOpacity,
   Image,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Map as MapIcon, List, MapPin, Accessibility } from 'lucide-react-native';
 import MapView, { Marker, Callout } from '../components/Map';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOW } from '../styles/theme';

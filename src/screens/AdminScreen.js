@@ -1,12 +1,20 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TextInput,
   TouchableOpacity, Modal, useWindowDimensions,
-  SafeAreaView, StatusBar, Switch, Animated,
+  StatusBar, Switch, ActivityIndicator,
 } from 'react-native';
-import { Accessibility, Search, X, Settings, ChevronLeft } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Accessibility, Search, X, Settings, ChevronLeft, Plus } from 'lucide-react-native';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOW } from '../styles/theme';
-import { getAllObras, addObra, updateObra, deleteObra } from '../data/obras';
+import {
+  getAllObras as getAllObrasMock,
+  addObra as addObraMock,
+  updateObra as updateObraMock,
+  deleteObra as deleteObraMock,
+} from '../data/obras';
+import { PLACES as PLACES_MOCK } from '../data/places';
+import { localService, obraService } from '../services/api';
 
 const ADMIN_BLUE = '#0047BB';
 const SIDEBAR_W = 240;
@@ -20,7 +28,12 @@ const fmt = (iso) => {
 
 const emptyForm = () => ({
   id: '', titulo: '', autor: '', resumo: '', status: 'ativo',
-  recursos: { libras: false, audio: false, tatil: false },
+  recursos: { libras: false, audio: false, tatil: false }, local: '',
+});
+
+const emptyLocalForm = () => ({
+  name: '', fullName: '', duration: '', isFree: true, price: '',
+  rating: '5.0', accessibility: true, accessibilityType: '', category: 'visual',
 });
 
 // ── Toast ────────────────────────────────────────────────────────────────────
@@ -80,15 +93,28 @@ const chipS = StyleSheet.create({
 });
 
 // ── KPI Cards ─────────────────────────────────────────────────────────────────
-function KPICards({ obras }) {
-  const total = obras.length;
-  const ativos = obras.filter((o) => o.status === 'ativo').length;
-  const recursos = obras.filter((o) => o.recursos?.libras || o.recursos?.audio || o.recursos?.tatil).length;
-  const cards = [
-    { label: 'Total de Obras', value: total, color: ADMIN_BLUE },
-    { label: 'Obras Ativas', value: ativos, color: COLORS.success },
-    { label: 'Com Recursos', value: recursos, color: '#7C3AED' },
-  ];
+function KPICards({ currentTab, items }) {
+  let cards = [];
+  if (currentTab === 'Obras') {
+    const total = items.length;
+    const ativos = items.filter((o) => o.status === 'ativo').length;
+    const recursos = items.filter((o) => o.recursos?.libras || o.recursos?.audio || o.recursos?.tatil).length;
+    cards = [
+      { label: 'Total de Obras', value: total, color: ADMIN_BLUE },
+      { label: 'Obras Ativas', value: ativos, color: COLORS.success },
+      { label: 'Com Recursos', value: recursos, color: '#7C3AED' },
+    ];
+  } else {
+    const total = items.length;
+    const gratuitos = items.filter((l) => l.isFree).length;
+    const acessiveis = items.filter((l) => l.accessibility).length;
+    cards = [
+      { label: 'Total de Locais', value: total, color: ADMIN_BLUE },
+      { label: 'Locais Gratuitos', value: gratuitos, color: COLORS.success },
+      { label: 'Com Acessibilidade', value: acessiveis, color: '#7C3AED' },
+    ];
+  }
+
   return (
     <View style={kpiS.row}>
       {cards.map((c) => (
@@ -108,18 +134,25 @@ const kpiS = StyleSheet.create({
 });
 
 // ── Sidebar (desktop only) ────────────────────────────────────────────────────
-function Sidebar() {
+function Sidebar({ currentTab, setCurrentTab }) {
   return (
     <View style={sideS.wrap}>
       <View style={sideS.logoArea}>
         <Text style={sideS.logoText}>Inclusiva</Text>
         <Text style={sideS.logoSub}>Gestão de Acervo</Text>
       </View>
-      {['Obras', 'Locais', 'Configurações'].map((item, i) => (
-        <View key={item} style={[sideS.navItem, i === 0 && sideS.navActive]}>
-          <Text style={[sideS.navLabel, i === 0 && sideS.navLabelActive]}>{item}</Text>
-        </View>
-      ))}
+      {['Obras', 'Locais'].map((item) => {
+        const isActive = currentTab === item;
+        return (
+          <TouchableOpacity
+            key={item}
+            style={[sideS.navItem, isActive && sideS.navActive]}
+            onPress={() => setCurrentTab(item)}
+          >
+            <Text style={[sideS.navLabel, isActive && sideS.navLabelActive]}>{item}</Text>
+          </TouchableOpacity>
+        );
+      })}
       <View style={sideS.footer}>
         <Text style={sideS.version}>v1.0.0 — Protótipo</Text>
       </View>
@@ -139,13 +172,24 @@ const sideS = StyleSheet.create({
   version: { color: 'rgba(255,255,255,0.4)', fontSize: FONTS.sizes.xs },
 });
 
-// ── Form Modal ────────────────────────────────────────────────────────────────
-function ObraFormModal({ visible, obra, onClose, onSave }) {
+// ── Obra Form Modal ───────────────────────────────────────────────────────────
+function ObraFormModal({ visible, obra, locais, onClose, onSave }) {
   const [form, setForm] = useState(obra || emptyForm());
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
-  React.useEffect(() => { setForm(obra || emptyForm()); }, [obra]);
+  useEffect(() => {
+    if (obra) {
+      // Garante mapeamento correto de nfcId/id e local
+      setForm({
+        ...obra,
+        id: obra.nfcId || obra.id || '',
+        local: typeof obra.local === 'object' ? (obra.local?._id || obra.local?.id) : (obra.local || ''),
+      });
+    } else {
+      setForm(emptyForm());
+    }
+  }, [obra]);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setRecurso = (k, v) => setForm((f) => ({ ...f, recursos: { ...f.recursos, [k]: v } }));
@@ -158,14 +202,14 @@ function ObraFormModal({ visible, obra, onClose, onSave }) {
       <View style={formS.overlay}>
         <View style={[formS.sheet, isDesktop && formS.sheetDesktop]}>
           <View style={formS.header}>
-            <Text style={formS.title}>{obra?.id ? 'Editar Obra' : 'Nova Obra'}</Text>
+            <Text style={formS.title}>{(obra?._id || obra?.id) ? 'Editar Obra' : 'Nova Obra'}</Text>
             <TouchableOpacity onPress={onClose}>
               <Text style={formS.closeBtn}>✕</Text>
             </TouchableOpacity>
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={labelStyle}>ID NFC *</Text>
-            <TextInput style={inputStyle} value={form.id} onChangeText={(v) => set('id', v)} placeholder="Ex: 11" editable={!obra?.id} keyboardType="numeric" />
+            <TextInput style={inputStyle} value={form.id} onChangeText={(v) => set('id', v)} placeholder="Ex: 1" editable={!(obra?._id || obra?.id)} keyboardType="numeric" />
 
             <Text style={labelStyle}>Título *</Text>
             <TextInput style={inputStyle} value={form.titulo} onChangeText={(v) => set('titulo', v)} placeholder="Título da obra" />
@@ -173,12 +217,44 @@ function ObraFormModal({ visible, obra, onClose, onSave }) {
             <Text style={labelStyle}>Autor *</Text>
             <TextInput style={inputStyle} value={form.autor} onChangeText={(v) => set('autor', v)} placeholder="Nome do artista ou coletivo" />
 
+            <Text style={labelStyle}>Local Associado *</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginVertical: 6 }}>
+              {locais.map((loc) => {
+                const locId = loc._id || loc.id;
+                const selected = form.local === locId;
+                return (
+                  <TouchableOpacity
+                    key={locId}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      borderRadius: RADIUS.md,
+                      backgroundColor: selected ? ADMIN_BLUE : '#F0F4F8',
+                      marginRight: 8,
+                      borderWidth: 1.5,
+                      borderColor: selected ? ADMIN_BLUE : '#E2E8F4',
+                    }}
+                    onPress={() => set('local', locId)}
+                  >
+                    <Text style={{ color: selected ? '#fff' : COLORS.textPrimary, fontWeight: '600', fontSize: FONTS.sizes.sm }}>
+                      {loc.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            {locais.length === 0 && (
+              <Text style={{ fontSize: FONTS.sizes.xs, color: COLORS.paid, marginTop: 4 }}>
+                Nenhum local cadastrado. Por favor, crie um local antes!
+              </Text>
+            )}
+
             <Text style={labelStyle}>Audiodescrição *</Text>
             <TextInput
-              style={[inputStyle, { minHeight: 120, textAlignVertical: 'top', paddingTop: SPACING.md }]}
+              style={[inputStyle, { minHeight: 100, textAlignVertical: 'top', paddingTop: SPACING.md }]}
               value={form.resumo} onChangeText={(v) => set('resumo', v)}
-              placeholder="Descreva a obra de forma sensorial e humanizada para o público com deficiência visual..."
-              multiline numberOfLines={5}
+              placeholder="Descreva a obra para o público com deficiência visual..."
+              multiline numberOfLines={4}
             />
 
             <Text style={labelStyle}>Recursos de Acessibilidade</Text>
@@ -219,6 +295,86 @@ function ObraFormModal({ visible, obra, onClose, onSave }) {
     </Modal>
   );
 }
+
+// ── Local Form Modal ──────────────────────────────────────────────────────────
+function LocalFormModal({ visible, local, onClose, onSave }) {
+  const [form, setForm] = useState(local || emptyLocalForm());
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+
+  useEffect(() => {
+    setForm(local || emptyLocalForm());
+  }, [local]);
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const labelStyle = { fontSize: FONTS.sizes.sm, fontWeight: '600', color: COLORS.textSecondary, marginBottom: 6, marginTop: SPACING.md };
+  const inputStyle = { borderWidth: 1.5, borderColor: '#E2E8F4', borderRadius: RADIUS.md, paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, fontSize: FONTS.sizes.md, color: COLORS.textPrimary, backgroundColor: '#FAFCFF' };
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={formS.overlay}>
+        <View style={[formS.sheet, isDesktop && formS.sheetDesktop]}>
+          <View style={formS.header}>
+            <Text style={formS.title}>{(local?._id || local?.id) ? 'Editar Local' : 'Novo Local'}</Text>
+            <TouchableOpacity onPress={onClose}>
+              <Text style={formS.closeBtn}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            <Text style={labelStyle}>Nome Curto *</Text>
+            <TextInput style={inputStyle} value={form.name} onChangeText={(v) => set('name', v)} placeholder="Ex: CCBB" />
+
+            <Text style={labelStyle}>Nome Completo *</Text>
+            <TextInput style={inputStyle} value={form.fullName} onChangeText={(v) => set('fullName', v)} placeholder="Ex: Centro Cultural Banco do Brasil" />
+
+            <Text style={labelStyle}>Duração Estimada</Text>
+            <TextInput style={inputStyle} value={form.duration} onChangeText={(v) => set('duration', v)} placeholder="Ex: 45 Minutos" />
+
+            <Text style={labelStyle}>Categoria (filtro)</Text>
+            <TextInput style={inputStyle} value={form.category} onChangeText={(v) => set('category', v)} placeholder="Ex: visual, auditivo, interativo" />
+
+            <Text style={labelStyle}>Tipo de Acessibilidade</Text>
+            <TextInput style={inputStyle} value={form.accessibilityType} onChangeText={(v) => set('accessibilityType', v)} placeholder="Ex: Visual, Auditivo" />
+
+            <Text style={labelStyle}>Entrada Gratuita</Text>
+            <View style={formS.checkRow}>
+              <Switch
+                value={!!form.isFree}
+                onValueChange={(v) => {
+                  set('isFree', v);
+                  if (v) set('price', '');
+                }}
+                trackColor={{ false: '#E2E8F4', true: COLORS.success }}
+                thumbColor="#fff"
+              />
+              <Text style={formS.checkLabel}>{form.isFree ? 'Gratuito' : 'Pago'}</Text>
+            </View>
+
+            {!form.isFree && (
+              <>
+                <Text style={labelStyle}>Preço do Ingresso</Text>
+                <TextInput style={inputStyle} value={form.price} onChangeText={(v) => set('price', v)} placeholder="Ex: 30,00" />
+              </>
+            )}
+
+            <Text style={labelStyle}>Avaliação (Rating)</Text>
+            <TextInput style={inputStyle} value={form.rating} onChangeText={(v) => set('rating', v)} placeholder="Ex: 4.8" />
+
+            <View style={formS.actions}>
+              <TouchableOpacity style={formS.cancelBtn} onPress={onClose}>
+                <Text style={formS.cancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={formS.saveBtn} onPress={() => onSave(form)}>
+                <Text style={formS.saveText}>Salvar Local</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 const formS = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: SPACING.lg },
   sheet: { backgroundColor: '#fff', borderRadius: RADIUS.xl, padding: SPACING.xl, width: '100%', maxHeight: '90%' },
@@ -235,13 +391,17 @@ const formS = StyleSheet.create({
   saveText: { color: '#fff', fontWeight: '700', fontSize: FONTS.sizes.md },
 });
 
-// ── Table Row (desktop) ───────────────────────────────────────────────────────
+// ── Table Rows ────────────────────────────────────────────────────────────────
 function TableRow({ obra, onEdit, onDelete, isEven }) {
+  const localName = typeof obra.local === 'object' ? obra.local?.name : '—';
+  const idNfc = obra.nfcId || obra.id;
+
   return (
     <View style={[tableS.row, isEven && tableS.rowEven]}>
-      <Text style={[tableS.cell, tableS.cellId]} numberOfLines={1}>{obra.id}</Text>
+      <Text style={[tableS.cell, tableS.cellId]} numberOfLines={1}>{idNfc}</Text>
       <Text style={[tableS.cell, { flex: 3 }]} numberOfLines={1}>{obra.titulo}</Text>
       <Text style={[tableS.cell, { flex: 2 }]} numberOfLines={1}>{obra.autor}</Text>
+      <Text style={[tableS.cell, { flex: 1.5 }]} numberOfLines={1}>{localName}</Text>
       <Text style={[tableS.cell, { flex: 1.5 }]}>{fmt(obra.createdAt)}</Text>
       <View style={[tableS.cellView, { flex: 1.5 }]}><StatusBadge status={obra.status} /></View>
       <View style={[tableS.cellView, { flex: 2 }]}><RecursoChips recursos={obra.recursos} /></View>
@@ -256,6 +416,28 @@ function TableRow({ obra, onEdit, onDelete, isEven }) {
     </View>
   );
 }
+
+function LocalTableRow({ local, onEdit, onDelete, isEven }) {
+  return (
+    <View style={[tableS.row, isEven && tableS.rowEven]}>
+      <Text style={[tableS.cell, tableS.cellId]} numberOfLines={1}>{local.name}</Text>
+      <Text style={[tableS.cell, { flex: 3.5 }]} numberOfLines={1}>{local.fullName}</Text>
+      <Text style={[tableS.cell, { flex: 1.5 }]} numberOfLines={1}>{local.duration || '—'}</Text>
+      <Text style={[tableS.cell, { flex: 1.5 }]} numberOfLines={1}>{local.accessibilityType || 'Geral'}</Text>
+      <Text style={[tableS.cell, { flex: 1.5 }]} numberOfLines={1}>{local.category || 'visual'}</Text>
+      <Text style={[tableS.cell, { flex: 1 }]}>{local.isFree ? 'Grátis' : (local.price || 'Pago')}</Text>
+      <View style={[tableS.cellView, tableS.cellActions]}>
+        <TouchableOpacity style={tableS.editBtn} onPress={() => onEdit(local)}>
+          <Text style={tableS.editText}>Editar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={tableS.deleteBtn} onPress={() => onDelete(local)}>
+          <Text style={tableS.deleteText}>Excluir</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 const tableS = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md, paddingHorizontal: SPACING.lg, borderBottomWidth: 1, borderBottomColor: '#F0F4F8' },
   rowEven: { backgroundColor: '#FAFCFF' },
@@ -269,8 +451,11 @@ const tableS = StyleSheet.create({
   deleteText: { color: COLORS.paid, fontWeight: '600', fontSize: FONTS.sizes.xs },
 });
 
-// ── Mobile Card ───────────────────────────────────────────────────────────────
+// ── Mobile Cards ──────────────────────────────────────────────────────────────
 function ObraCard({ obra, onEdit, onDelete }) {
+  const localName = typeof obra.local === 'object' ? obra.local?.name : '—';
+  const idNfc = obra.nfcId || obra.id;
+
   return (
     <View style={[cardS.wrap, SHADOW.card]}>
       <View style={cardS.top}>
@@ -281,8 +466,8 @@ function ObraCard({ obra, onEdit, onDelete }) {
         <StatusBadge status={obra.status} />
       </View>
       <View style={cardS.meta}>
-        <Text style={cardS.metaText}>ID: <Text style={{ color: ADMIN_BLUE, fontWeight: '700' }}>{obra.id}</Text></Text>
-        <Text style={cardS.metaText}>Criação: {fmt(obra.createdAt)}</Text>
+        <Text style={cardS.metaText}>ID NFC: <Text style={{ color: ADMIN_BLUE, fontWeight: '700' }}>{idNfc}</Text></Text>
+        <Text style={cardS.metaText}>Local: <Text style={{ fontWeight: '600' }}>{localName}</Text></Text>
       </View>
       <RecursoChips recursos={obra.recursos} />
       <View style={cardS.actions}>
@@ -296,6 +481,37 @@ function ObraCard({ obra, onEdit, onDelete }) {
     </View>
   );
 }
+
+function LocalCard({ local, onEdit, onDelete }) {
+  return (
+    <View style={[cardS.wrap, SHADOW.card]}>
+      <View style={cardS.top}>
+        <View style={{ flex: 1 }}>
+          <Text style={cardS.title} numberOfLines={1}>{local.fullName}</Text>
+          <Text style={cardS.author}>{local.name}</Text>
+        </View>
+        <View style={[badgeS.wrap, { backgroundColor: local.isFree ? '#D1FAE5' : '#FEE2E2' }]}>
+          <Text style={[badgeS.label, { color: local.isFree ? '#065F46' : '#991B1B' }]}>
+            {local.isFree ? 'Grátis' : `R$ ${local.price || 'Pago'}`}
+          </Text>
+        </View>
+      </View>
+      <View style={cardS.meta}>
+        <Text style={cardS.metaText}>Duração: <Text style={{ fontWeight: '600' }}>{local.duration || '—'}</Text></Text>
+        <Text style={cardS.metaText}>Foco: <Text style={{ fontWeight: '600' }}>{local.accessibilityType || 'Geral'}</Text></Text>
+      </View>
+      <View style={cardS.actions}>
+        <TouchableOpacity style={tableS.editBtn} onPress={() => onEdit(local)}>
+          <Text style={tableS.editText}>Editar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={tableS.deleteBtn} onPress={() => onDelete(local)}>
+          <Text style={tableS.deleteText}>Excluir</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 const cardS = StyleSheet.create({
   wrap: { backgroundColor: '#fff', borderRadius: RADIUS.lg, padding: SPACING.lg, marginBottom: SPACING.md },
   top: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: SPACING.sm },
@@ -306,66 +522,214 @@ const cardS = StyleSheet.create({
   actions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md, justifyContent: 'flex-end' },
 });
 
-// ── Main Screen ───────────────────────────────────────────────────────────────
+// ── Main Admin Screen ─────────────────────────────────────────────────────────
 export default function AdminScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
-  const [obras, setObras] = useState(() => getAllObras());
+  // Estados principais
+  const [currentTab, setCurrentTab] = useState('Obras');
+  const [isApiActive, setIsApiActive] = useState(false);
+  const [obras, setObras] = useState([]);
+  const [locais, setLocais] = useState([]);
   const [query, setQuery] = useState('');
-  const [modalVisible, setModalVisible] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Modais de Criação/Edição
+  const [obraModalVisible, setObraModalVisible] = useState(false);
   const [editingObra, setEditingObra] = useState(null);
+  const [localModalVisible, setLocalModalVisible] = useState(false);
+  const [editingLocal, setEditingLocal] = useState(null);
+
+  // Feedback do sistema
   const [toast, setToast] = useState({ msg: '', type: 'success' });
 
   const showToast = (msg, type = 'success') => {
     setToast({ msg, type });
-    setTimeout(() => setToast({ msg: '', type: 'success' }), 3000);
+    setTimeout(() => setToast({ msg: '', type: 'success' }), 4000);
   };
 
-  const refresh = () => setObras(getAllObras());
-
-  const filtered = obras.filter(
-    (o) =>
-      o.titulo.toLowerCase().includes(query.toLowerCase()) ||
-      String(o.id).includes(query) ||
-      o.autor.toLowerCase().includes(query.toLowerCase())
-  );
-
-  const handleSave = (form) => {
+  // Carregamento inicial de dados (API com fallback local)
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      if (editingObra) {
-        updateObra(editingObra.id, form);
-        showToast('Obra atualizada com sucesso!');
-      } else {
-        addObra(form);
-        showToast('Obra cadastrada com sucesso!');
+      // 1. Tenta carregar os Locais da API
+      const apiLocais = await localService.getAll();
+      setLocais(apiLocais);
+
+      // 2. Tenta carregar as Obras da API
+      const apiObras = await obraService.getAll();
+      setObras(apiObras);
+
+      setIsApiActive(true);
+    } catch (err) {
+      console.warn('Servidor API indisponível. Inicializando no modo de demonstração local.', err.message);
+      setIsApiActive(false);
+
+      // Fallback para mock local
+      setObras(getAllObrasMock());
+      setLocais(PLACES_MOCK);
+      showToast('Conectado no modo offline de demonstração.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // ── Operações de Obras ──────────────────────────────────────────────────────
+  const handleSaveObra = async (form) => {
+    try {
+      const payload = {
+        nfcId: String(form.id).trim(),
+        titulo: form.titulo,
+        autor: form.autor,
+        resumo: form.resumo,
+        recursos: form.recursos,
+        status: form.status,
+        local: form.local,
+      };
+
+      if (!payload.local) {
+        throw new Error('Você deve selecionar um Local para a obra.');
       }
-      refresh();
-      setModalVisible(false);
+
+      const id = form._id || form.id;
+      const isEdit = !!(editingObra?._id || editingObra?.id);
+
+      if (isApiActive) {
+        if (isEdit) {
+          await obraService.update(id, payload);
+          showToast('Obra atualizada no servidor Atlas!');
+        } else {
+          await obraService.create(payload);
+          showToast('Obra cadastrada no servidor Atlas!');
+        }
+      } else {
+        // Modo offline
+        if (isEdit) {
+          updateObraMock(id, form);
+          showToast('Obra atualizada localmente!');
+        } else {
+          addObraMock(form);
+          showToast('Obra cadastrada localmente!');
+        }
+      }
+      loadData();
+      setObraModalVisible(false);
       setEditingObra(null);
     } catch (e) {
       showToast(e.message, 'error');
     }
   };
 
-  const handleDelete = (obra) => {
+  const handleDeleteObra = async (obra) => {
     try {
-      deleteObra(obra.id);
-      refresh();
-      showToast(`"${obra.titulo}" excluída.`);
+      const id = obra._id || obra.id;
+      if (isApiActive) {
+        await obraService.delete(id);
+        showToast('Obra excluída do servidor!');
+      } else {
+        deleteObraMock(id);
+        showToast('Obra removida localmente!');
+      }
+      loadData();
     } catch (e) {
       showToast(e.message, 'error');
     }
   };
 
-  const handleEdit = (obra) => {
-    setEditingObra(obra);
-    setModalVisible(true);
+  // ── Operações de Locais ─────────────────────────────────────────────────────
+  const handleSaveLocal = async (form) => {
+    try {
+      const id = form._id || form.id;
+      const isEdit = !!(editingLocal?._id || editingLocal?.id);
+
+      if (isApiActive) {
+        if (isEdit) {
+          await localService.update(id, form);
+          showToast('Local atualizado no servidor Atlas!');
+        } else {
+          await localService.create(form);
+          showToast('Local cadastrado no servidor Atlas!');
+        }
+      } else {
+        // Modo offline
+        if (isEdit) {
+          setLocais((prev) => prev.map((l) => ((l.id || l._id) === id ? { ...l, ...form } : l)));
+          showToast('Local atualizado localmente!');
+        } else {
+          const newLoc = { ...form, id: String(Date.now()) };
+          setLocais((prev) => [...prev, newLoc]);
+          showToast('Local cadastrado localmente!');
+        }
+      }
+      loadData();
+      setLocalModalVisible(false);
+      setEditingLocal(null);
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
   };
 
+  const handleDeleteLocal = async (local) => {
+    try {
+      const id = local._id || local.id;
+      if (isApiActive) {
+        await localService.delete(id);
+        showToast('Local removido do servidor!');
+      } else {
+        setLocais((prev) => prev.filter((l) => (l.id || l._id) !== id));
+        showToast('Local removido localmente!');
+      }
+      loadData();
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+  };
+
+  // ── Filtros de Busca ────────────────────────────────────────────────────────
+  const getFilteredItems = () => {
+    if (currentTab === 'Obras') {
+      return obras.filter(
+        (o) =>
+          o.titulo.toLowerCase().includes(query.toLowerCase()) ||
+          String(o.nfcId || o.id).includes(query) ||
+          o.autor.toLowerCase().includes(query.toLowerCase())
+      );
+    } else {
+      return locais.filter(
+        (l) =>
+          l.name.toLowerCase().includes(query.toLowerCase()) ||
+          l.fullName.toLowerCase().includes(query.toLowerCase()) ||
+          (l.category && l.category.toLowerCase().includes(query.toLowerCase()))
+      );
+    }
+  };
+
+  const filteredItems = getFilteredItems();
+
+  // ── Lógica de clique de adição ──────────────────────────────────────────────
   const handleAdd = () => {
-    setEditingObra(null);
-    setModalVisible(true);
+    if (currentTab === 'Obras') {
+      setEditingObra(null);
+      setObraModalVisible(true);
+    } else {
+      setEditingLocal(null);
+      setLocalModalVisible(true);
+    }
+  };
+
+  const handleEdit = (item) => {
+    if (currentTab === 'Obras') {
+      setEditingObra(item);
+      setObraModalVisible(true);
+    } else {
+      setEditingLocal(item);
+      setLocalModalVisible(true);
+    }
   };
 
   const mainContent = (
@@ -378,56 +742,110 @@ export default function AdminScreen({ navigation }) {
           </TouchableOpacity>
         )}
         <View>
-          <Text style={mainS.pageTitle}>Gestão de Acervo</Text>
-          <Text style={mainS.pageSubtitle}>{obras.length} obras cadastradas</Text>
+          <Text style={mainS.pageTitle}>
+            {currentTab === 'Obras' ? 'Gestão de Acervo' : 'Gestão de Locais'}
+          </Text>
+          <Text style={mainS.pageSubtitle}>
+            {currentTab === 'Obras'
+              ? `${obras.length} obras cadastradas`
+              : `${locais.length} locais de cultura cadastrados`}
+          </Text>
         </View>
+
         <TouchableOpacity style={mainS.addBtn} onPress={handleAdd}>
-          <Text style={mainS.addBtnText}>+ Adicionar Obra</Text>
+          <Text style={mainS.addBtnText}>
+            {currentTab === 'Obras' ? '+ Adicionar Obra' : '+ Adicionar Local'}
+          </Text>
         </TouchableOpacity>
       </View>
 
-      {/* Search */}
+      {/* Indicador de Conexão com o Servidor */}
+      <View style={[mainS.connectionBar, { backgroundColor: isApiActive ? '#DEF7EC' : '#FEF3C7' }]}>
+        <Text style={[mainS.connectionText, { color: isApiActive ? '#03543F' : '#92400E' }]}>
+          {isApiActive
+            ? '● Conectado com sucesso ao MongoDB Atlas'
+            : '▲ Servidor API Offline. Rodando localmente com dados de demonstração.'}
+        </Text>
+      </View>
+
+      {/* Search Input */}
       <View style={mainS.searchWrap}>
         <TextInput
           style={mainS.searchInput}
-          placeholder="Buscar por título, ID NFC ou autor..."
+          placeholder={currentTab === 'Obras' ? 'Buscar por título, ID NFC ou autor...' : 'Buscar por nome ou categoria...'}
           placeholderTextColor={COLORS.textMuted}
           value={query}
           onChangeText={setQuery}
         />
       </View>
 
-      {/* KPI */}
-      <KPICards obras={obras} />
+      {/* KPI Cards */}
+      <KPICards currentTab={currentTab} items={currentTab === 'Obras' ? obras : locais} />
 
-      {/* Table (desktop) / Cards (mobile) */}
-      {isDesktop ? (
-        <View style={[mainS.tableWrap, SHADOW.card]}>
-          {/* Table header */}
-          <View style={[tableS.row, mainS.tableHead]}>
-            {[['ID NFC', 0.8], ['Título', 3], ['Autor', 2], ['Criação', 1.5], ['Status', 1.5], ['Recursos', 2], ['Ações', 2]].map(([label, flex]) => (
-              <Text key={label} style={[mainS.thText, { flex }]}>{label}</Text>
-            ))}
-          </View>
-          <ScrollView>
-            {filtered.map((o, i) => (
-              <TableRow key={o.id} obra={o} isEven={i % 2 === 0} onEdit={handleEdit} onDelete={handleDelete} />
-            ))}
-            {filtered.length === 0 && (
-              <View style={mainS.empty}><Text style={mainS.emptyText}>Nenhuma obra encontrada.</Text></View>
-            )}
-          </ScrollView>
-        </View>
+      {/* Carregando indicador */}
+      {loading ? (
+        <ActivityIndicator size="large" color={ADMIN_BLUE} style={{ marginVertical: SPACING.xl }} />
       ) : (
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {filtered.map((o) => (
-            <ObraCard key={o.id} obra={o} onEdit={handleEdit} onDelete={handleDelete} />
-          ))}
-          {filtered.length === 0 && (
-            <View style={mainS.empty}><Text style={mainS.emptyText}>Nenhuma obra encontrada.</Text></View>
+        <>
+          {/* Table (desktop) / Cards (mobile) */}
+          {isDesktop ? (
+            <View style={[mainS.tableWrap, SHADOW.card]}>
+              {currentTab === 'Obras' ? (
+                <>
+                  <View style={[tableS.row, mainS.tableHead]}>
+                    {[['ID NFC', 0.8], ['Título', 3], ['Autor', 2], ['Local', 1.5], ['Criação', 1.5], ['Status', 1.5], ['Recursos', 2], ['Ações', 2]].map(([label, flex]) => (
+                      <Text key={label} style={[mainS.thText, { flex }]}>{label}</Text>
+                    ))}
+                  </View>
+                  <ScrollView>
+                    {filteredItems.map((o, i) => (
+                      <TableRow key={o._id || o.id} obra={o} isEven={i % 2 === 0} onEdit={handleEdit} onDelete={handleDeleteObra} />
+                    ))}
+                    {filteredItems.length === 0 && (
+                      <View style={mainS.empty}><Text style={mainS.emptyText}>Nenhuma obra encontrada.</Text></View>
+                    )}
+                  </ScrollView>
+                </>
+              ) : (
+                <>
+                  <View style={[tableS.row, mainS.tableHead]}>
+                    {[['Nome', 0.8], ['Nome Completo', 3.5], ['Duração', 1.5], ['Foco', 1.5], ['Categoria', 1.5], ['Ingresso', 1], ['Ações', 2]].map(([label, flex]) => (
+                      <Text key={label} style={[mainS.thText, { flex }]}>{label}</Text>
+                    ))}
+                  </View>
+                  <ScrollView>
+                    {filteredItems.map((l, i) => (
+                      <LocalTableRow key={l._id || l.id} local={l} isEven={i % 2 === 0} onEdit={handleEdit} onDelete={handleDeleteLocal} />
+                    ))}
+                    {filteredItems.length === 0 && (
+                      <View style={mainS.empty}><Text style={mainS.emptyText}>Nenhum local encontrado.</Text></View>
+                    )}
+                  </ScrollView>
+                </>
+              )}
+            </View>
+          ) : (
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {currentTab === 'Obras' ? (
+                filteredItems.map((o) => (
+                  <ObraCard key={o._id || o.id} obra={o} onEdit={handleEdit} onDelete={handleDeleteObra} />
+                ))
+              ) : (
+                filteredItems.map((l) => (
+                  <LocalCard key={l._id || l.id} local={l} onEdit={handleEdit} onDelete={handleDeleteLocal} />
+                ))
+              )}
+              {filteredItems.length === 0 && (
+                <View style={mainS.empty}>
+                  <Text style={mainS.emptyText}>
+                    {currentTab === 'Obras' ? 'Nenhuma obra encontrada.' : 'Nenhum local encontrado.'}
+                  </Text>
+                </View>
+              )}
+              <View style={{ height: 80 }} />
+            </ScrollView>
           )}
-          <View style={{ height: 80 }} />
-        </ScrollView>
+        </>
       )}
     </View>
   );
@@ -438,19 +856,42 @@ export default function AdminScreen({ navigation }) {
       <Toast msg={toast.msg} type={toast.type} />
 
       <View style={mainS.root}>
-        {isDesktop && <Sidebar />}
+        {isDesktop && <Sidebar currentTab={currentTab} setCurrentTab={setCurrentTab} />}
         <ScrollView
           style={mainS.scrollArea}
           contentContainerStyle={mainS.scrollContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* Top Bar Mobile com Tabs de Navegação */}
           {!isDesktop && (
-            <View style={mainS.mobileTopBar}>
-              <TouchableOpacity onPress={() => navigation?.goBack()}>
-                <Text style={mainS.backBtn}>← Voltar</Text>
-              </TouchableOpacity>
-              <Text style={mainS.mobileTitle}>Gestão de Acervo</Text>
-              <View style={{ width: 60 }} />
+            <View style={mainS.mobileHeaderWrap}>
+              <View style={mainS.mobileTopBar}>
+                <TouchableOpacity onPress={() => navigation?.goBack()}>
+                  <Text style={mainS.backBtn}>← Voltar</Text>
+                </TouchableOpacity>
+                <Text style={mainS.mobileTitle}>Administração</Text>
+                <View style={{ width: 60 }} />
+              </View>
+
+              <View style={mainS.mobileTabBar}>
+                {['Obras', 'Locais'].map((item) => {
+                  const isActive = currentTab === item;
+                  return (
+                    <TouchableOpacity
+                      key={item}
+                      style={[mainS.mobileTabBtn, isActive && mainS.mobileTabActive]}
+                      onPress={() => {
+                        setCurrentTab(item);
+                        setQuery('');
+                      }}
+                    >
+                      <Text style={[mainS.mobileTabText, isActive && mainS.mobileTabTextActive]}>
+                        {item}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
           )}
           {mainContent}
@@ -460,15 +901,24 @@ export default function AdminScreen({ navigation }) {
       {/* Mobile FAB */}
       {!isDesktop && (
         <TouchableOpacity style={mainS.fab} onPress={handleAdd}>
-          <Text style={mainS.fabText}>+</Text>
+          <Plus size={24} color="#fff" />
         </TouchableOpacity>
       )}
 
+      {/* Modais de Formulários */}
       <ObraFormModal
-        visible={modalVisible}
+        visible={obraModalVisible}
         obra={editingObra}
-        onClose={() => { setModalVisible(false); setEditingObra(null); }}
-        onSave={handleSave}
+        locais={locais}
+        onClose={() => { setObraModalVisible(false); setEditingObra(null); }}
+        onSave={handleSaveObra}
+      />
+
+      <LocalFormModal
+        visible={localModalVisible}
+        local={editingLocal}
+        onClose={() => { setLocalModalVisible(false); setEditingLocal(null); }}
+        onSave={handleSaveLocal}
       />
     </SafeAreaView>
   );
@@ -479,11 +929,13 @@ const mainS = StyleSheet.create({
   root: { flex: 1, flexDirection: 'row' },
   scrollArea: { flex: 1 },
   scrollContent: { padding: SPACING.xl, flexGrow: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xl },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg },
   pageTitle: { fontSize: FONTS.sizes.xxl, fontWeight: '800', color: COLORS.textPrimary },
   pageSubtitle: { fontSize: FONTS.sizes.sm, color: COLORS.textSecondary, marginTop: 2 },
   addBtn: { backgroundColor: ADMIN_BLUE, borderRadius: RADIUS.md, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md },
   addBtnText: { color: '#fff', fontWeight: '700', fontSize: FONTS.sizes.md },
+  connectionBar: { paddingHorizontal: SPACING.lg, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, marginBottom: SPACING.lg, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)' },
+  connectionText: { fontSize: FONTS.sizes.xs, fontWeight: '600' },
   searchWrap: { marginBottom: SPACING.xl },
   searchInput: { backgroundColor: '#fff', borderRadius: RADIUS.md, paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md, fontSize: FONTS.sizes.md, color: COLORS.textPrimary, borderWidth: 1.5, borderColor: '#E2E8F4' },
   tableWrap: { backgroundColor: '#fff', borderRadius: RADIUS.lg, overflow: 'hidden' },
@@ -495,15 +947,20 @@ const mainS = StyleSheet.create({
     marginRight: SPACING.md,
     padding: 6,
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(0,0,0,0.04)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: '#E2E8F4',
   },
-  mobileTopBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.lg },
+  mobileHeaderWrap: { marginBottom: SPACING.lg },
+  mobileTopBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: SPACING.md },
   mobileTitle: { fontSize: FONTS.sizes.lg, fontWeight: '800', color: COLORS.textPrimary },
   backBtn: { color: ADMIN_BLUE, fontSize: FONTS.sizes.md, fontWeight: '600' },
+  mobileTabBar: { flexDirection: 'row', backgroundColor: '#E2E8F4', borderRadius: RADIUS.md, padding: 3 },
+  mobileTabBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: RADIUS.sm },
+  mobileTabActive: { backgroundColor: '#fff' },
+  mobileTabText: { fontSize: FONTS.sizes.sm, fontWeight: '600', color: COLORS.textSecondary },
+  mobileTabTextActive: { color: ADMIN_BLUE, fontWeight: '700' },
   fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: ADMIN_BLUE, alignItems: 'center', justifyContent: 'center', ...SHADOW.strong },
-  fabText: { color: '#fff', fontSize: 28, fontWeight: '300', lineHeight: 32 },
 });
