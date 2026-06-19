@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOW } from '../styles/theme';
 import BottomNavBar from '../components/BottomNavBar';
 
@@ -33,6 +34,29 @@ export default function SettingsScreen({ navigation }) {
   const [contrast, setContrast] = useState(1); // multiplier
   const [audioDesc, setAudioDesc] = useState(false);
   const [alertRadius, setAlertRadius] = useState(2000); // meters
+  
+  // New State
+  const [forceQrCode, setForceQrCode] = useState(false);
+
+  React.useEffect(() => {
+    async function loadSettings() {
+      try {
+        const qrPref = await AsyncStorage.getItem('@force_qr_code');
+        if (qrPref !== null) {
+          setForceQrCode(JSON.parse(qrPref));
+        }
+      } catch (e) {}
+    }
+    loadSettings();
+  }, []);
+
+  const handleForceQrToggle = async (value) => {
+    setForceQrCode(value);
+    try {
+      await AsyncStorage.setItem('@force_qr_code', JSON.stringify(value));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {}
+  };
   
   // Focus State for Accessibility (Keyboard/Switch navigation)
   const [focusedElement, setFocusedElement] = useState(null);
@@ -165,6 +189,26 @@ export default function SettingsScreen({ navigation }) {
               accessibilityRole="switch"
               accessibilityLabel="Ativar modo de audiodescrição de interface"
               accessibilityState={{ checked: audioDesc }}
+            />
+          </View>
+
+          <View style={styles.switchRow}>
+            <View style={styles.switchTextGroup}>
+              <Text style={styles.settingLabel}>Forçar Leitura por QR Code</Text>
+              <Text style={styles.settingHint}>Desativa o NFC e usa a câmera para ler as placas do local.</Text>
+            </View>
+            <Switch
+              value={forceQrCode}
+              onValueChange={handleForceQrToggle}
+              trackColor={{ false: SETTINGS_THEME.border, true: SETTINGS_THEME.primary }}
+              thumbColor={SETTINGS_THEME.background}
+              style={getFocusStyle('switch-qrcode')}
+              onFocus={() => handleFocus('switch-qrcode')}
+              onBlur={handleBlur}
+              accessible={true}
+              accessibilityRole="switch"
+              accessibilityLabel="Forçar leitura por QR Code"
+              accessibilityState={{ checked: forceQrCode }}
             />
           </View>
         </View>

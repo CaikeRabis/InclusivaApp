@@ -3,16 +3,20 @@ import { Platform } from 'react-native';
 // No Android Emulator, 10.0.2.2 mapeia para o localhost da máquina hospedeira.
 // No iOS Simulator e na Web, localhost é usado diretamente.
 const getBaseUrl = () => {
-  if (Platform.OS === 'android') {
-    return 'http://10.0.2.2:3000/api';
-  }
-  return 'http://localhost:3000/api';
+  // Configurado para IP local para permitir testes em dispositivos físicos
+  return 'http://172.20.10.2:3000/api';
 };
 
 export const API_URL = getBaseUrl();
 
 // ── Helper Geral de Requisições ───────────────────────────────────────────────
 const request = async (path, options = {}) => {
+  // MODO TESTE (RESERVA DO BACKEND):
+  // Lança um erro proposital e sem console.error para que os componentes
+  // usem automaticamente o "catch" e busquem os dados mockados locais.
+  throw new Error('Usando dados mockados (Backend em modo reserva)');
+
+  /* 
   try {
     const response = await fetch(`${API_URL}${path}`, {
       ...options,
@@ -31,6 +35,7 @@ const request = async (path, options = {}) => {
     console.error(`Erro na requisição ${path}:`, error.message);
     throw error;
   }
+  */
 };
 
 // ── Endpoints de Locais (CRUD) ────────────────────────────────────────────────

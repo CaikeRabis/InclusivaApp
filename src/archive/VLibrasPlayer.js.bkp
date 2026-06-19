@@ -1,0 +1,296 @@
+import React, { useRef, useEffect, useMemo, useState } from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
+import { WebView } from 'react-native-webview';
+import { COLORS, RADIUS, SHADOW } from '../styles/theme';
+
+/**
+ * VLibrasPlayer — Renderiza o avatar 3D do VLibras dentro de uma WebView.
+ * Devido a restrições inquebráveis de segurança do iOS/Android para WebGL e Web Audio,
+ * a inicialização exige um toque físico do usuário.
+ * Estratégia de UX: Sobrepor a área do VLibras com um aviso amigável. Ao tocar em qualquer lugar,
+ * o widget inicia e a tradução prossegue automaticamente.
+ *
+ * @param {string}  texto       - Texto em português para traduzir em Libras.
+ * @param {number}  [height=300] - Altura do container do avatar.
+ */
+export default function VLibrasPlayer({ texto, height = 300 }) {
+  const webviewRef = useRef(null);
+  const [webviewKey, setWebviewKey] = useState(0);
+
+  const escapeForJS = (str) => {
+    if (!str) return '';
+    return str
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, '\\n')
+      .replace(/\r/g, '');
+  };
+
+  const htmlSource = useMemo(() => {
+    const escapedTexto = escapeForJS(texto);
+
+    return `
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    #obra-text {
+      position: absolute;
+      top: 0; left: 0;
+      width: 1px; height: 1px;
+      opacity: 0.01;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    /* Status de LOG (opcional) */
+    #status-label {
+      position: fixed; bottom: 8px; left: 50%;
+      transform: translateX(-50%); font-size: 11px;
+      color: rgba(0,0,0,0.3); z-index: 99999;
+      pointer-events: none;
+    }
+
+    /* Container do Widget VLibras centralizado */
+    [vw] {
+      position: fixed !important;
+      width: 100% !important;
+      height: 100% !important;
+      top: 0 !important; left: 0 !important;
+      z-index: 9999 !important;
+    }
+
+    [vw-plugin-wrapper] {
+      width: 100% !important; height: 100% !important;
+      display: flex !important; justify-content: center !important; align-items: center !important;
+      background: transparent !important;
+      transform: scale(1.2) !important;
+    }
+
+    /* ─── OVERLAY E BOTÃO GIGANTE ─── */
+    /* Fazemos o botão nativo azul do VLibras esticar por toda a tela e ficar invisível */
+    [vw-access-button] {
+      position: absolute !important;
+      top: 0 !important; left: 0 !important;
+      width: 100vw !important; height: 100vh !important;
+      opacity: 0 !important;
+      z-index: 999999 !important;
+      margin: 0 !important; border-radius: 0 !important;
+      display: block !important;
+    }
+
+    /* Layout amigável pedindo para o usuário tocar */
+    #start-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      background-color: #F8FAFC;
+      z-index: 99999; /* Atrás do botão invisível */
+    }
+    
+    .start-icon { font-size: 40px; margin-bottom: 12px; }
+    .start-text { font-size: 16px; color: #0F172A; font-weight: 600; text-align: center; padding: 0 20px; }
+    .start-subtext { font-size: 13px; color: #64748B; margin-top: 8px; text-align: center; padding: 0 20px;}
+  </style>
+</head>
+<body>
+
+  <div id="obra-text">${escapedTexto}</div>
+  <div id="status-label"></div>
+
+  <!-- Nosso aviso amigável. Como o [vw-access-button] invisível tem z-index maior, 
+       qualquer toque aqui será capturado pelo botão do VLibras -->
+  <div id="start-overlay">
+    <div class="start-icon">👋</div>
+    <div class="start-text">Toque aqui para iniciar o Tradutor 3D</div>
+    <div class="start-subtext">Seu navegador exige um toque manual para liberar o uso da memória de vídeo.</div>
+  </div>
+
+  <div vw class="enabled">
+    <div vw-access-button class="active"></div>
+    <div vw-plugin-wrapper>
+      <div class="vw-plugin-top-wrapper"></div>
+    </div>
+  </div>
+
+</body>
+</html>
+    `;
+  }, [texto]);
+
+  const injectedScript = useMemo(() => {
+    return `
+    (function() {
+      function log(msg) {
+        if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(msg);
+        var lbl = document.getElementById('status-label');
+        if(lbl) lbl.textContent = msg;
+      }
+
+      window.onerror = function(message, source, lineno) {
+        log('JS_ERROR: ' + message + ' (line ' + lineno + ')');
+      };
+
+      log('Carregando VLibras Plugin...');
+      var script = document.createElement('script');
+      script.src = 'https://vlibras.gov.br/app/vlibras-plugin.js';
+      script.async = true;
+
+      script.onload = function() {
+        try {
+          new window.VLibras.Widget('https://vlibras.gov.br/app');
+          log('Aguardando toque na tela...');
+          
+          var accessBtn = document.querySelector('[vw-access-button]');
+          if (accessBtn) {
+            // Este evento será acionado apenas quando o usuário físicamente tocar na tela
+            accessBtn.addEventListener('click', function() {
+              log('Toque físico recebido! Aguardando Unity...');
+              
+              // Remove o overlay e esconde o botão gigante para o avatar aparecer de forma limpa
+              var overlay = document.getElementById('start-overlay');
+              if (overlay) overlay.style.display = 'none';
+              accessBtn.style.display = 'none';
+
+              // Monitora o carregamento real da Unity
+              var attempts = 0;
+              var interval = setInterval(function() {
+                attempts++;
+                var allCanvases = document.querySelectorAll('canvas');
+                var unityReady = false;
+                for (var i = 0; i < allCanvases.length; i++) {
+                  if (allCanvases[i].width > 50 && allCanvases[i].height > 50) {
+                    unityReady = true;
+                    break;
+                  }
+                }
+
+                if (unityReady) {
+                  clearInterval(interval);
+                  log('Unity carregada! Traduzindo...');
+                  setTimeout(forceTranslate, 3000);
+                } else if (attempts > 60) {
+                  clearInterval(interval);
+                  log('Timeout Unity. Tentando traduzir mesmo assim...');
+                  forceTranslate();
+                }
+              }, 500);
+            });
+          }
+        } catch(e) {
+          log('ERRO Widget: ' + e.message);
+        }
+      };
+
+      document.body.appendChild(script);
+
+      window.forceTranslate = function forceTranslate() {
+        try {
+          var el = document.getElementById('obra-text');
+          if (!el || !el.textContent.trim()) return;
+
+          // Se a Unity tem intro ativa, tentar pular
+          if (window.plugin && window.plugin.player) {
+            if (typeof window.plugin.player.skipIntro === 'function') window.plugin.player.skipIntro();
+          }
+          
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          var range = document.createRange();
+          range.selectNodeContents(el);
+          sel.addRange(range);
+
+          var evt = new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window });
+          el.dispatchEvent(evt);
+          document.dispatchEvent(evt);
+          
+          log('Tradução disparada.');
+          setTimeout(function() { document.getElementById('status-label').textContent = ''; }, 2000);
+        } catch(e) {
+          log('Erro na tradução: ' + e.message);
+        }
+      };
+
+      window.updateText = function(newText) {
+        var el = document.getElementById('obra-text');
+        if (el) {
+          el.textContent = newText;
+          setTimeout(window.forceTranslate, 1000);
+        }
+      };
+    })();
+    true;
+    `;
+  }, []); // A dependência não precisa ser texto aqui, a injeção acontece 1 vez
+
+  useEffect(() => {
+    if (webviewRef.current && texto) {
+      const escaped = escapeForJS(texto);
+      webviewRef.current.injectJavaScript(`
+        if (window.updateText) updateText("${escaped}");
+        true;
+      `);
+    }
+  }, [texto]);
+
+  if (!texto) return null;
+
+  return (
+    <View style={[styles.container, { height }]}>
+      <WebView
+        key={webviewKey}
+        ref={webviewRef}
+        source={{ html: htmlSource, baseUrl: 'https://vlibras.gov.br' }}
+        style={styles.webview}
+        originWhitelist={['*']}
+        javaScriptEnabled={true}
+        domStorageEnabled={true}
+        cacheEnabled={true}
+        cacheMode="LOAD_DEFAULT"
+        allowsInlineMediaPlayback={true}
+        mediaPlaybackRequiresUserAction={false}
+        mixedContentMode="always"
+        allowFileAccess={true}
+        allowUniversalAccessFromFileURLs={true}
+        scalesPageToFit={false}
+        scrollEnabled={false}
+        bounces={false}
+        onMessage={(event) => console.log('WEBVIEW LIBRAS:', event.nativeEvent.data)}
+        overScrollMode="never"
+        showsHorizontalScrollIndicator={false}
+        showsVerticalScrollIndicator={false}
+        androidLayerType="hardware"
+        allowsFullscreenVideo={false}
+        injectedJavaScript={injectedScript}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    width: '100%',
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    backgroundColor: '#F8FAFC',
+    ...SHADOW.card,
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+});
