@@ -15,13 +15,27 @@ import { COLORS, FONTS, SPACING, RADIUS, SHADOW } from '../styles/theme';
 import BottomNavBar from '../components/BottomNavBar';
 import { EVENTS } from '../data/events';
 import { explorarEventos } from '../utils/filterLogic';
+import { EXPERIMENTAL_MODE } from './NFCScreen';
 
 export default function ExploreScreen({ navigation }) {
   const [activeFilter, setActiveFilter] = useState('todos');
   const [activeTab, setActiveTab] = useState('explore');
   const [viewMode, setViewMode] = useState('map'); // 'map' or 'list'
 
-  const filteredEvents = explorarEventos(EVENTS, activeFilter);
+  let filteredEvents = explorarEventos(EVENTS, activeFilter);
+
+  if (EXPERIMENTAL_MODE) {
+    filteredEvents = filteredEvents.map(event => {
+      if (event.local && event.local.includes('CCBB')) {
+        return {
+          ...event,
+          local: 'Capital Lab',
+          image: require('../../assets/capital-lab-img.jpg'),
+        };
+      }
+      return event;
+    });
+  }
 
   // Region center (mocked to Brasília)
   const initialRegion = {

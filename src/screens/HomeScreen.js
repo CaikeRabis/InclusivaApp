@@ -19,6 +19,7 @@ import BottomNavBar from '../components/BottomNavBar';
 import { PLACES } from '../data/places';
 import { localService } from '../services/api';
 import TrailTimeline from '../components/TrailTimeline';
+import { EXPERIMENTAL_MODE } from './NFCScreen';
 
 export default function HomeScreen({ navigation }) {
   const { width } = useWindowDimensions();
@@ -31,6 +32,9 @@ export default function HomeScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
 
   const getPlaceImage = (img) => {
+    if (EXPERIMENTAL_MODE && img === 'capitallab') {
+      return require('../../assets/capital-lab-img.jpg');
+    }
     if (!img) return require('../../assets/ccbb.jpg');
     if (typeof img === 'number') return img;
     if (typeof img === 'string') {
@@ -46,14 +50,42 @@ export default function HomeScreen({ navigation }) {
     async function loadPlaces() {
       try {
         const data = await localService.getAll();
-        const mapped = data.map((p) => ({
-          ...p,
-          id: p._id || p.id,
-          image: getPlaceImage(p.image),
-        }));
+        const mapped = data.map((p) => {
+          let name = p.name;
+          let fullName = p.fullName;
+          let img = p.image;
+          if (EXPERIMENTAL_MODE && (name === 'CCBB' || fullName === 'Centro Cultural Banco do Brasil')) {
+            name = 'Capital Lab';
+            fullName = 'Capital Lab';
+            img = 'capitallab';
+          }
+          return {
+            ...p,
+            name,
+            fullName,
+            id: p._id || p.id,
+            image: getPlaceImage(img),
+          };
+        });
         setPlaces(mapped);
       } catch (err) {
-        setPlaces(PLACES);
+        let fallbackPlaces = PLACES.map(p => {
+          let name = p.name;
+          let fullName = p.fullName;
+          let img = p.image;
+          if (EXPERIMENTAL_MODE && (name === 'CCBB' || fullName === 'Centro Cultural Banco do Brasil')) {
+            name = 'Capital Lab';
+            fullName = 'Capital Lab';
+            img = 'capitallab';
+          }
+          return {
+            ...p,
+            name,
+            fullName,
+            image: getPlaceImage(img)
+          };
+        });
+        setPlaces(fallbackPlaces);
       } finally {
         setLoading(false);
       }
@@ -135,6 +167,12 @@ export default function HomeScreen({ navigation }) {
             </TouchableOpacity>
           )}
         </View>
+        
+        {EXPERIMENTAL_MODE && (
+          <View style={styles.experimentalBadge}>
+            <Text style={styles.experimentalBadgeText}>Modo Evento Capital Lab Ativo</Text>
+          </View>
+        )}
       </View>
 
       {/* ───── CONTENT ───── */}
@@ -314,6 +352,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textMuted,
     fontWeight: '700',
+  },
+  experimentalBadge: {
+    backgroundColor: '#F59E0B',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.md,
+    alignSelf: 'center',
+    marginTop: SPACING.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  experimentalBadgeText: {
+    color: COLORS.white,
+    fontSize: FONTS.sizes.sm,
+    fontWeight: 'bold',
   },
 
   // ── Content

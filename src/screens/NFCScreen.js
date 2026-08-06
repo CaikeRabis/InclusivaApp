@@ -25,11 +25,41 @@ import { useNfcReader } from '../hooks/useNfcReader';
 import { Platform } from 'react-native';
 import VLibrasPlayer from '../components/VLibrasPlayer';
 
+export const EXPERIMENTAL_MODE = true;
+
+const EXPERIMENTAL_MOCK_DATA = {
+  "1": {
+    id: "1",
+    titulo: "Boas-vindas e Mapa do Capital Lab",
+    resumo: "Bem-vindo ao Capital Lab! Você está na entrada do nosso ambiente de inovação. Para que você possa se guiar com conforto pelo espaço, preste atenção a estas direções a partir de onde você está agora: Imediatamente à sua esquerda, temos uma área de convivência com mesas e cadeiras para você se acomodar, além de uma geladeira de apoio. À sua direita, fica localizada a secretaria. Seguindo direto até o fundo do ambiente, você encontrará os banheiros. E, se você continuar caminhando direto para a frente, encontrará as nossas obras de arte. Lá, você poderá usar o seu celular para vivenciar uma imersão acessível e completa. Sinta-se em casa e explore o espaço! Caso não encontre piso tátil dirija-se 14 passos à frente em linha reta e após isso, vire 4 passos a esquerda para ter acesso a próxima obra."
+  },
+  "entrada_capital_lab": {
+    id: "entrada_capital_lab",
+    titulo: "Boas-vindas e Mapa do Capital Lab",
+    resumo: "Bem-vindo ao Capital Lab! Você está na entrada do nosso ambiente de inovação. Para que você possa se guiar com conforto pelo espaço, preste atenção a estas direções a partir de onde você está agora: Imediatamente à sua esquerda, temos uma área de convivência com mesas e cadeiras para você se acomodar, além de uma geladeira de apoio. À sua direita, fica localizada a secretaria. Seguindo direto até o fundo do ambiente, você encontrará os banheiros. E, se você continuar caminhando direto para a frente, encontrará as nossas obras de arte. Lá, você poderá usar o seu celular para vivenciar uma imersão acessível e completa. Sinta-se em casa e explore o espaço! Caso não encontre piso tátil dirija-se 14 passos à frente em linha reta e após isso, vire 4 passos a esquerda para ter acesso a próxima obra."
+  },
+  "2": {
+    id: "2",
+    titulo: "Estação de Criação",
+    resumo: "Atenção ao seu redor. Imediatamente à sua direita, encontra-se uma impressora em funcionamento. Imagine uma máquina que constrói objetos físicos do zero, derretendo e moldando o material camada por camada, como se estivesse desenhando no ar. Agora, volte sua atenção para a sua esquerda: ali repousa uma delicada obra de arte em menor escala. Ela é o resultado palpável desse processo minucioso, materializando perfeitamente o tipo de criação que o nosso espaço permite.",
+    image: require('../../assets/obra-impressora-capital.jpeg')
+  },
+  "impressora_obra": {
+    id: "impressora_obra",
+    titulo: "Estação de Criação",
+    resumo: "Atenção ao seu redor. Imediatamente à sua direita, encontra-se uma impressora em funcionamento. Imagine uma máquina que constrói objetos físicos do zero, derretendo e moldando o material camada por camada, como se estivesse desenhando no ar. Agora, volte sua atenção para a sua esquerda: ali repousa uma delicada obra de arte em menor escala. Ela é o resultado palpável desse processo minucioso, materializando perfeitamente o tipo de criação que o nosso espaço permite.",
+    image: require('../../assets/obra-impressora-capital.jpeg')
+  }
+};
+
 export default function NFCScreen({ route, navigation }) {
   const placeId = route?.params?.placeId;
   const [place, setPlace] = useState({});
 
   const getPlaceImage = (img) => {
+    if (EXPERIMENTAL_MODE && img === 'capitallab') {
+      return require('../../assets/capital-lab-img.jpg');
+    }
     if (!img) return require('../../assets/ccbb.jpg');
     if (typeof img === 'number') return img;
     if (typeof img === 'string') {
@@ -45,13 +75,37 @@ export default function NFCScreen({ route, navigation }) {
     async function loadPlace() {
       try {
         const data = await localService.getById(placeId);
+        let name = data.name;
+        let fullName = data.fullName;
+        let img = data.image;
+        if (EXPERIMENTAL_MODE && (name === 'CCBB' || fullName === 'Centro Cultural Banco do Brasil')) {
+          name = 'Capital Lab';
+          fullName = 'Capital Lab';
+          img = 'capitallab';
+        }
         setPlace({
           ...data,
+          name,
+          fullName,
           id: data._id || data.id,
-          image: getPlaceImage(data.image),
+          image: getPlaceImage(img),
         });
       } catch (err) {
-        setPlace(getPlaceById(placeId) || {});
+        const data = getPlaceById(placeId) || {};
+        let name = data.name;
+        let fullName = data.fullName;
+        let img = data.image;
+        if (EXPERIMENTAL_MODE && (name === 'CCBB' || fullName === 'Centro Cultural Banco do Brasil')) {
+          name = 'Capital Lab';
+          fullName = 'Capital Lab';
+          img = 'capitallab';
+        }
+        setPlace({
+          ...data,
+          name,
+          fullName,
+          image: getPlaceImage(img)
+        });
       }
     }
     if (placeId) {
@@ -189,6 +243,18 @@ export default function NFCScreen({ route, navigation }) {
     async function fetchScannedObra() {
       if (scannedId) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        if (EXPERIMENTAL_MODE) {
+          const safeId = String(scannedId).trim().toLowerCase();
+          const mockObra = EXPERIMENTAL_MOCK_DATA[safeId] || EXPERIMENTAL_MOCK_DATA[scannedId];
+          if (mockObra) {
+            setCurrentObra(mockObra);
+            setModalVisible(true);
+            falarComVozPremium(`Obra identificada: ${mockObra.titulo}. ${mockObra.resumo}`);
+            return;
+          }
+        }
+
         try {
           const obra = await obraService.getByNfcId(scannedId);
           setCurrentObra(obra);
@@ -482,6 +548,15 @@ export default function NFCScreen({ route, navigation }) {
 
             {currentObra ? (
               <ScrollView style={styles.modalScroll}>
+                {/* Imagem da Obra */}
+                {currentObra.image && (
+                  <Image 
+                    source={currentObra.image} 
+                    style={styles.obraImage} 
+                    resizeMode="cover" 
+                  />
+                )}
+
                 {/* ───── VLIBRAS AVATAR SECTION ───── */}
                 {showLibras && (
                   <View style={styles.vlibrasCard}>
@@ -652,6 +727,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: COLORS.white,
     marginBottom: 4,
+  },
+  obraImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: RADIUS.lg,
+    marginBottom: SPACING.md,
   },
   placeMeta: {
     flexDirection: 'row',

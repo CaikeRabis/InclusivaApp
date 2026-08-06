@@ -3,20 +3,21 @@
 let OBRAS_MAP = {
   '1': {
     id: '1',
-    titulo: 'A Dança das Formas',
-    autor: 'Marina Silva',
+    titulo: 'Boas-vindas e Mapa do Capital Lab',
+    autor: 'Capital Lab',
     resumo:
-      'Uma escultura tátil que explora o movimento geométrico. A obra possui curvas suaves em aço inoxidável, permitindo que a luz crie padrões dinâmicos. Ao tocá-la, sente-se a transição da textura lisa para a áspera na base.',
+      'Bem-vindo ao Capital Lab! Você está na entrada do nosso ambiente de inovação. Para que você possa se guiar com conforto pelo espaço, preste atenção a estas direções a partir de onde você está agora: Imediatamente à sua esquerda, temos uma área de convivência com mesas e cadeiras para você se acomodar, além de uma geladeira de apoio. À sua direita, fica localizada a secretaria. Seguindo direto até o fundo do ambiente, você encontrará os banheiros. E, se você continuar caminhando direto para a frente, encontrará as nossas obras de arte. Lá, você poderá usar o seu celular para vivenciar uma imersão acessível e completa. Sinta-se em casa e explore o espaço! Caso não encontre piso tátil dirija-se 14 passos à frente em linha reta e após isso, vire 4 passos a esquerda para ter acesso a próxima obra.',
     createdAt: '2024-03-10T10:00:00.000Z',
     status: 'ativo',
     recursos: { libras: true, audio: true, tatil: true },
   },
   '2': {
     id: '2',
-    titulo: 'O Som da Cidade',
-    autor: 'Coletivo Ruidoso',
+    titulo: 'Estação de Criação',
+    autor: 'Capital Lab',
     resumo:
-      'Instalação sonora interativa. Sons cotidianos de Brasília são mixados em uma sinfonia contínua. Elementos de percussão acompanham o ritmo do trânsito do Eixão.',
+      'Atenção ao seu redor. Imediatamente à sua direita, encontra-se uma impressora em funcionamento. Imagine uma máquina que constrói objetos físicos do zero, derretendo e moldando o material camada por camada, como se estivesse desenhando no ar. Agora, volte sua atenção para a sua esquerda: ali repousa uma delicada obra de arte em menor escala. Ela é o resultado palpável desse processo minucioso, materializando perfeitamente o tipo de criação que o nosso espaço permite.',
+    image: require('../../assets/obra-impressora-capital.jpeg'),
     createdAt: '2024-03-15T14:00:00.000Z',
     status: 'ativo',
     recursos: { libras: false, audio: true, tatil: false },
