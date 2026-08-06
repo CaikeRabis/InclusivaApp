@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
-import { Signal, CheckCircle2, AlertTriangle, Smartphone, Radio, Clock, Accessibility, ChevronLeft, Volume2, X, Hand } from 'lucide-react-native';
+import { Signal, CheckCircle2, AlertTriangle, Smartphone, Radio, Clock, Accessibility, ChevronLeft, Volume2, X, Hand, QrCode, Camera } from 'lucide-react-native';
 import { COLORS, FONTS, SPACING, RADIUS, SHADOW } from '../styles/theme';
 import { getPlaceById } from '../data/places';
 import { getObraById } from '../data/obras';
@@ -51,6 +51,9 @@ const EXPERIMENTAL_MOCK_DATA = {
     image: require('../../assets/obra-impressora-capital.jpeg')
   }
 };
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from '@react-navigation/native';
 
 export default function NFCScreen({ route, navigation }) {
   const placeId = route?.params?.placeId;
@@ -115,14 +118,34 @@ export default function NFCScreen({ route, navigation }) {
 
   
   const nfcIdParam = route?.params?.nfcId;
-  const { isScanning, scannedId: nfcScannedId, error, startScanning, cancelScanning, nfcSupported } = useNfcReader();
+  const { isScanning, scannedId: nfcScannedId, error, startScanning, cancelScanning, nfcSupported: hwNfcSupported } = useNfcReader();
+  const [forceQrCode, setForceQrCode] = useState(false);
+  const nfcSupported = hwNfcSupported && !forceQrCode;
+
+  useFocusEffect(
+    React.useCallback(() => {
+      async function loadSettings() {
+        try {
+          const qrPref = await AsyncStorage.getItem('@force_qr_code');
+          if (qrPref !== null) {
+            setForceQrCode(JSON.parse(qrPref));
+          }
+        } catch (e) {}
+      }
+      loadSettings();
+    }, [])
+  );
+
   const [devScannedId, setDevScannedId] = useState(null);
-  const scannedId = nfcScannedId || nfcIdParam || devScannedId;
+  const [qrScannedId, setQrScannedId] = useState(null);
+  const scannedId = nfcScannedId || nfcIdParam || devScannedId || qrScannedId;
   const [modalVisible, setModalVisible] = useState(false);
   const [currentObra, setCurrentObra] = useState(null);
-  const [showLibras, setShowLibras] = useState(true);
   const [speechRate, setSpeechRate] = useState(1.0);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  
+  const [permission, requestPermission] = useCameraPermissions();
+  const [isCameraVisible, setIsCameraVisible] = useState(false);
   
   const titleRef = useRef(null);
 
@@ -306,6 +329,18 @@ export default function NFCScreen({ route, navigation }) {
     setIsSpeaking(false);
     setModalVisible(false);
     setDevScannedId(null);
+    setQrScannedId(null);
+  };
+
+  const handleBarCodeScanned = ({ type, data }) => {
+    setIsCameraVisible(false);
+    // Extrai o ID da URL se for inclusiva://obra/ID ou similar, senao assume que eh apenas o ID
+    let id = data;
+    const match = data.match(/inclusiva:\/\/obra\/(\w+)/i);
+    if (match) {
+      id = match[1];
+    }
+    setQrScannedId(id);
   };
 
   const getStatusConfig = () => {
@@ -331,6 +366,14 @@ export default function NFCScreen({ route, navigation }) {
         title: 'Leitura concluída!',
         subtitle: 'Verifique os detalhes na tela.',
         color: COLORS.success,
+      };
+    }
+    if (nfcSupported === false) {
+      return {
+        icon: <QrCode size={40} color={COLORS.primary} strokeWidth={2} />,
+        title: 'Escanear QR Code',
+        subtitle: 'Este aparelho não possui NFC. Use a câmera para ler o QR Code da obra.',
+        color: COLORS.primary,
       };
     }
     return {
@@ -370,7 +413,7 @@ export default function NFCScreen({ route, navigation }) {
       </View>
 
       {/* ───── CONTENT ───── */}
-      <Animated.View
+      <Animated.ScrollView
         style={[
           styles.content,
           {
@@ -378,6 +421,8 @@ export default function NFCScreen({ route, navigation }) {
             transform: [{ translateY: slideAnim }],
           },
         ]}
+        contentContainerStyle={{ paddingBottom: 100 }}
+        showsVerticalScrollIndicator={false}
       >
         {/* Place info card */}
         {place.image && (
@@ -462,9 +507,9 @@ export default function NFCScreen({ route, navigation }) {
               <Text style={styles.instructionNumberText}>2</Text>
             </View>
             <View style={styles.instructionTextGroup}>
-              <Text style={styles.instructionLabel}>Aproxime o celular</Text>
+              <Text style={styles.instructionLabel}>{nfcSupported === false ? 'Abra a câmera' : 'Aproxime o celular'}</Text>
               <Text style={styles.instructionDesc}>
-                Encoste a parte traseira do celular no totem
+                {nfcSupported === false ? 'Aponte a câmera para o QR Code da placa' : 'Encoste a parte traseira do celular no totem'}
               </Text>
             </View>
           </View>
@@ -481,44 +526,52 @@ export default function NFCScreen({ route, navigation }) {
             </View>
           </View>
         </View>
-      </Animated.View>
+      </Animated.ScrollView>
 
       {/* ───── BOTTOM ACTION ───── */}
       <View style={styles.bottomAction}>
-        <TouchableOpacity
-          style={styles.scanButton}
-          onPress={isScanning ? cancelScanning : startScanning}
-          activeOpacity={0.85}
-          accessible={true}
-          accessibilityRole="button"
-          accessibilityLabel={isScanning ? "Cancelar leitura NFC" : "Iniciar leitura NFC"}
-        >
-          {isScanning ? (
-            <X size={20} color={COLORS.white} strokeWidth={2} />
-          ) : (
-            <Radio size={20} color={COLORS.white} strokeWidth={2} />
-          )}
-          <Text style={styles.scanButtonText}>
-            {isScanning ? 'Cancelar Leitura' : 'Iniciar leitura NFC'}
-          </Text>
-        </TouchableOpacity>
-
-        <Text style={styles.bottomHint}>
-          Certifique-se de que o NFC está ativado e as permissões foram concedidas.
-        </Text>
-
-        {__DEV__ && (
+        {nfcSupported === false ? (
           <TouchableOpacity
-            style={[styles.scanButton, { backgroundColor: COLORS.primaryDark, marginTop: SPACING.md }]}
-            onPress={() => setDevScannedId('1')}
+            style={styles.scanButton}
+            onPress={async () => {
+              if (!permission?.granted) {
+                await requestPermission();
+              }
+              setIsCameraVisible(true);
+            }}
             activeOpacity={0.85}
+            accessible={true}
+            accessibilityRole="button"
+            accessibilityLabel="Abrir câmera para escanear QR Code"
           >
-            <Smartphone size={20} color={COLORS.white} strokeWidth={2} />
+            <Camera size={20} color={COLORS.white} strokeWidth={2} />
+            <Text style={styles.scanButtonText}>Abrir Câmera</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.scanButton}
+            onPress={isScanning ? cancelScanning : startScanning}
+            activeOpacity={0.85}
+            accessible={true}
+            accessibilityRole="button"
+            accessibilityLabel={isScanning ? "Cancelar leitura NFC" : "Iniciar leitura NFC"}
+          >
+            {isScanning ? (
+              <X size={20} color={COLORS.white} strokeWidth={2} />
+            ) : (
+              <Radio size={20} color={COLORS.white} strokeWidth={2} />
+            )}
             <Text style={styles.scanButtonText}>
-              Simular Leitura (Modo DEV)
+              {isScanning ? 'Cancelar Leitura' : 'Iniciar leitura NFC'}
             </Text>
           </TouchableOpacity>
         )}
+
+        <Text style={styles.bottomHint}>
+          {nfcSupported === false 
+            ? 'Aponte a câmera para o QR Code presente na placa.' 
+            : 'Certifique-se de que o NFC está ativado e as permissões foram concedidas.'}
+        </Text>
       </View>
 
       {/* ───── MODAL DE DETALHES DA OBRA ───── */}
@@ -603,25 +656,48 @@ export default function NFCScreen({ route, navigation }) {
                     </Text>
                   </TouchableOpacity>
                 </View>
-
-                {/* ───── SPEECH RATE CONTROL ───── */}
-                <View style={styles.rateControlContainer}>
-                  <Text style={styles.rateControlLabel}>Velocidade do Áudio:</Text>
-                  <TouchableOpacity 
-                    style={styles.rateButton}
-                    onPress={cycleSpeechRate}
-                    accessible={true}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Velocidade atual: ${speechRate} vezes. Toque para alterar.`}
-                  >
-                    <Text style={styles.rateButtonText}>{speechRate}x</Text>
-                  </TouchableOpacity>
+              <View style={styles.modalBody}>
+                {/* ───── TÍTULO E RESUMO ───── */}
+                <View style={{ flexShrink: 1 }}>
+                  <Text style={styles.obraTitle} numberOfLines={2}>{currentObra.titulo}</Text>
+                  <ScrollView style={{ flexGrow: 0, maxHeight: 400, marginBottom: SPACING.md }}>
+                    <Text style={styles.obraResumo}>{currentObra.resumo}</Text>
+                  </ScrollView>
                 </View>
 
-                <Text style={{ color: '#10B981', fontSize: 12, textAlign: 'center', marginTop: 8, marginBottom: SPACING.lg, fontWeight: 'bold' }}>
-                  ✓ Modo Acessibilidade V4 (Foco + Velocidade Áudio)
-                </Text>
-              </ScrollView>
+                {/* ───── CONTROLES INFERIORES ───── */}
+                <View style={styles.bottomControls}>
+                  <View style={styles.actionButtonsRow}>
+                    <TouchableOpacity 
+                      style={styles.audioButton}
+                      onPress={handleAudioDescricao}
+                      accessible={true}
+                      accessibilityRole="button"
+                      accessibilityLabel="Ouvir Audiodescrição. O leitor de tela narrará a descrição da obra."
+                    >
+                      <Volume2 size={20} color={COLORS.white} style={{ marginRight: SPACING.sm }} />
+                      <Text style={styles.audioButtonText}>Ouvir Áudio</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.rateControlContainer}>
+                    <Text style={styles.rateControlLabel}>Velocidade do Áudio:</Text>
+                    <TouchableOpacity 
+                      style={styles.rateButton}
+                      onPress={cycleSpeechRate}
+                      accessible={true}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Velocidade atual: ${speechRate} vezes. Toque para alterar.`}
+                    >
+                      <Text style={styles.rateButtonText}>{speechRate}x</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Text style={{ color: '#10B981', fontSize: 12, textAlign: 'center', marginTop: 8, fontWeight: 'bold' }}>
+                    ✓ Modo Acessibilidade V4 (Foco + Velocidade)
+                  </Text>
+                </View>
+              </View>
             ) : (
               <View style={styles.errorContainer}>
                 <AlertTriangle size={48} color="#DC2626" />
@@ -639,6 +715,43 @@ export default function NFCScreen({ route, navigation }) {
             )}
           </View>
         </View>
+      </Modal>
+
+      {/* ───── MODAL DE CÂMERA (QR CODE) ───── */}
+      <Modal
+        visible={isCameraVisible}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setIsCameraVisible(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+          <View style={styles.cameraHeader}>
+            <TouchableOpacity 
+              onPress={() => setIsCameraVisible(false)}
+              style={styles.cameraCloseButton}
+            >
+              <X size={28} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.cameraTitle}>Escanear QR Code</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          
+          {isCameraVisible && (
+            <View style={styles.cameraContainer}>
+              <CameraView
+                style={StyleSheet.absoluteFillObject}
+                facing="back"
+                onBarcodeScanned={handleBarCodeScanned}
+                barcodeScannerSettings={{
+                  barcodeTypes: ["qr"],
+                }}
+              />
+              <View style={styles.qrOverlay}>
+                <View style={styles.qrMarker} />
+              </View>
+            </View>
+          )}
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -924,6 +1037,10 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: SPACING.xs,
   },
+  modalBody: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
   modalScroll: {
     flex: 1,
   },
@@ -946,11 +1063,13 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
   },
   // ── Action Buttons Row
+  bottomControls: {
+    marginTop: SPACING.md,
+  },
   actionButtonsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: SPACING.sm,
-    marginTop: SPACING.md,
   },
   audioButton: {
     flex: 1,
@@ -1074,7 +1193,8 @@ const styles = StyleSheet.create({
   },
   vlibrasContainer: {
     width: '100%',
-    minHeight: 380,
+    height: 220,
+    backgroundColor: 'transparent',
   },
 
   errorContainer: {
@@ -1106,5 +1226,47 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONTS.sizes.md,
     fontWeight: '700',
+  },
+  cameraHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    backgroundColor: '#000',
+  },
+  cameraTitle: {
+    color: '#FFF',
+    fontSize: FONTS.sizes.lg,
+    fontWeight: '700',
+  },
+  cameraCloseButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  cameraContainer: {
+    flex: 1,
+    position: 'relative',
+    backgroundColor: '#000',
+  },
+  qrOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrMarker: {
+    width: 250,
+    height: 250,
+    borderWidth: 3,
+    borderColor: COLORS.primary,
+    backgroundColor: 'transparent',
+    borderRadius: RADIUS.lg,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 5,
   },
 });
