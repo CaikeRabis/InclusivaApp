@@ -116,7 +116,7 @@ export default function NFCScreen({ route, navigation }) {
     }
   }, [placeId]);
 
-  
+
   const nfcIdParam = route?.params?.nfcId;
   const { isScanning, scannedId: nfcScannedId, error, startScanning, cancelScanning, nfcSupported: hwNfcSupported } = useNfcReader();
   const [forceQrCode, setForceQrCode] = useState(false);
@@ -130,7 +130,7 @@ export default function NFCScreen({ route, navigation }) {
           if (qrPref !== null) {
             setForceQrCode(JSON.parse(qrPref));
           }
-        } catch (e) {}
+        } catch (e) { }
       }
       loadSettings();
     }, [])
@@ -143,10 +143,10 @@ export default function NFCScreen({ route, navigation }) {
   const [currentObra, setCurrentObra] = useState(null);
   const [speechRate, setSpeechRate] = useState(1.0);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  
+
   const [permission, requestPermission] = useCameraPermissions();
   const [isCameraVisible, setIsCameraVisible] = useState(false);
-  
+
   const titleRef = useRef(null);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -158,9 +158,9 @@ export default function NFCScreen({ route, navigation }) {
   useEffect(() => {
     async function setupBestVoice() {
       const voices = await Speech.getAvailableVoicesAsync();
-      
+
       // Filtra vozes em pt-BR
-      const ptBrVoices = voices.filter(v => 
+      const ptBrVoices = voices.filter(v =>
         v.language.startsWith('pt-BR') || v.language === 'pt-BR'
       );
 
@@ -169,10 +169,10 @@ export default function NFCScreen({ route, navigation }) {
         // 1. Vozes "Enhanced" no iOS (qualidade 2)
         // 2. Vozes neurais ou específicas (como 'Luciana' ou 'Felipe')
         // 3. Primeira disponível se nada for encontrado
-        const best = ptBrVoices.find(v => v.quality === Speech.VoiceQuality.Enhanced) || 
-                     ptBrVoices.find(v => v.name.toLowerCase().includes('google')) ||
-                     ptBrVoices[0];
-        
+        const best = ptBrVoices.find(v => v.quality === Speech.VoiceQuality.Enhanced) ||
+          ptBrVoices.find(v => v.name.toLowerCase().includes('google')) ||
+          ptBrVoices[0];
+
         setPreferredVoice(best);
       }
     }
@@ -183,7 +183,7 @@ export default function NFCScreen({ route, navigation }) {
   const falarComVozPremium = (texto, rate = speechRate) => {
     Speech.stop();
     setIsSpeaking(true);
-    
+
     // Pequeno delay para garantir que o Android inicialize a engine de TTS
     // caso o app tenha acabado de ser acordado por um Deep Link NFC
     setTimeout(() => {
@@ -266,7 +266,7 @@ export default function NFCScreen({ route, navigation }) {
     async function fetchScannedObra() {
       if (scannedId) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        
+
         if (EXPERIMENTAL_MODE) {
           const safeId = String(scannedId).trim().toLowerCase();
           const mockObra = EXPERIMENTAL_MOCK_DATA[safeId] || EXPERIMENTAL_MOCK_DATA[scannedId];
@@ -316,9 +316,9 @@ export default function NFCScreen({ route, navigation }) {
     let nextRate = 1.0;
     if (speechRate === 1.0) nextRate = 1.5;
     else if (speechRate === 1.5) nextRate = 2.0;
-    
+
     setSpeechRate(nextRate);
-    
+
     if (isSpeaking && currentObra) {
       falarComVozPremium(currentObra.resumo, nextRate);
     }
@@ -568,8 +568,8 @@ export default function NFCScreen({ route, navigation }) {
         )}
 
         <Text style={styles.bottomHint}>
-          {nfcSupported === false 
-            ? 'Aponte a câmera para o QR Code presente na placa.' 
+          {nfcSupported === false
+            ? 'Aponte a câmera para o QR Code presente na placa.'
             : 'Certifique-se de que o NFC está ativado e as permissões foram concedidas.'}
         </Text>
       </View>
@@ -588,7 +588,7 @@ export default function NFCScreen({ route, navigation }) {
               <Text ref={titleRef} style={styles.modalTitle} accessibilityRole="header">
                 Detalhes da Obra
               </Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={fecharModal}
                 style={styles.closeButton}
                 accessible={true}
@@ -603,10 +603,10 @@ export default function NFCScreen({ route, navigation }) {
               <ScrollView style={styles.modalScroll}>
                 {/* Imagem da Obra */}
                 {currentObra.image && (
-                  <Image 
-                    source={currentObra.image} 
-                    style={styles.obraImage} 
-                    resizeMode="cover" 
+                  <Image
+                    source={currentObra.image}
+                    style={styles.obraImage}
+                    resizeMode="cover"
                   />
                 )}
 
@@ -631,7 +631,7 @@ export default function NFCScreen({ route, navigation }) {
 
                 {/* ───── ACTION BUTTONS ───── */}
                 <View style={styles.actionButtonsRow}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={styles.audioButton}
                     onPress={handleAudioDescricao}
                     accessible={true}
@@ -642,7 +642,7 @@ export default function NFCScreen({ route, navigation }) {
                     <Text style={styles.audioButtonText}>Ouvir Áudio</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.librasButton, showLibras && styles.librasButtonActive]}
                     onPress={() => setShowLibras(!showLibras)}
                     accessible={true}
@@ -656,64 +656,64 @@ export default function NFCScreen({ route, navigation }) {
                     </Text>
                   </TouchableOpacity>
                 </View>
-              <View style={styles.modalBody}>
-                {/* ───── TÍTULO E RESUMO ───── */}
-                <View style={{ flexShrink: 1 }}>
-                  <Text style={styles.obraTitle} numberOfLines={2}>{currentObra.titulo}</Text>
-                  <ScrollView style={{ flexGrow: 0, maxHeight: 400, marginBottom: SPACING.md }}>
-                    <Text style={styles.obraResumo}>{currentObra.resumo}</Text>
-                  </ScrollView>
+                <View style={styles.modalBody}>
+                  {/* ───── TÍTULO E RESUMO ───── */}
+                  <View style={{ flexShrink: 1 }}>
+                    <Text style={styles.obraTitle} numberOfLines={2}>{currentObra.titulo}</Text>
+                    <ScrollView style={{ flexGrow: 0, maxHeight: 400, marginBottom: SPACING.md }}>
+                      <Text style={styles.obraResumo}>{currentObra.resumo}</Text>
+                    </ScrollView>
+                  </View>
+
+                  {/* ───── CONTROLES INFERIORES ───── */}
+                  <View style={styles.bottomControls}>
+                    <View style={styles.actionButtonsRow}>
+                      <TouchableOpacity
+                        style={styles.audioButton}
+                        onPress={handleAudioDescricao}
+                        accessible={true}
+                        accessibilityRole="button"
+                        accessibilityLabel="Ouvir Audiodescrição. O leitor de tela narrará a descrição da obra."
+                      >
+                        <Volume2 size={20} color={COLORS.white} style={{ marginRight: SPACING.sm }} />
+                        <Text style={styles.audioButtonText}>Ouvir Áudio</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.rateControlContainer}>
+                      <Text style={styles.rateControlLabel}>Velocidade do Áudio:</Text>
+                      <TouchableOpacity
+                        style={styles.rateButton}
+                        onPress={cycleSpeechRate}
+                        accessible={true}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Velocidade atual: ${speechRate} vezes. Toque para alterar.`}
+                      >
+                        <Text style={styles.rateButtonText}>{speechRate}x</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text style={{ color: '#10B981', fontSize: 12, textAlign: 'center', marginTop: 8, fontWeight: 'bold' }}>
+                      ✓ Modo Acessibilidade V4 (Foco + Velocidade)
+                    </Text>
+                  </View>
                 </View>
-
-                {/* ───── CONTROLES INFERIORES ───── */}
-                <View style={styles.bottomControls}>
-                  <View style={styles.actionButtonsRow}>
-                    <TouchableOpacity 
-                      style={styles.audioButton}
-                      onPress={handleAudioDescricao}
-                      accessible={true}
-                      accessibilityRole="button"
-                      accessibilityLabel="Ouvir Audiodescrição. O leitor de tela narrará a descrição da obra."
-                    >
-                      <Volume2 size={20} color={COLORS.white} style={{ marginRight: SPACING.sm }} />
-                      <Text style={styles.audioButtonText}>Ouvir Áudio</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.rateControlContainer}>
-                    <Text style={styles.rateControlLabel}>Velocidade do Áudio:</Text>
-                    <TouchableOpacity 
-                      style={styles.rateButton}
-                      onPress={cycleSpeechRate}
-                      accessible={true}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Velocidade atual: ${speechRate} vezes. Toque para alterar.`}
-                    >
-                      <Text style={styles.rateButtonText}>{speechRate}x</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <Text style={{ color: '#10B981', fontSize: 12, textAlign: 'center', marginTop: 8, fontWeight: 'bold' }}>
-                    ✓ Modo Acessibilidade V4 (Foco + Velocidade)
+                ) : (
+                <View style={styles.errorContainer}>
+                  <AlertTriangle size={48} color="#DC2626" />
+                  <Text style={styles.errorTextTitle}>Obra não identificada</Text>
+                  <Text style={styles.errorTextDesc}>
+                    O ID lido ({scannedId}) não pertence ao roteiro atual ou a tag está corrompida.
                   </Text>
+                  <TouchableOpacity
+                    style={styles.retryButton}
+                    onPress={fecharModal}
+                  >
+                    <Text style={styles.retryButtonText}>Tentar Novamente</Text>
+                  </TouchableOpacity>
                 </View>
-              </View>
-            ) : (
-              <View style={styles.errorContainer}>
-                <AlertTriangle size={48} color="#DC2626" />
-                <Text style={styles.errorTextTitle}>Obra não identificada</Text>
-                <Text style={styles.errorTextDesc}>
-                  O ID lido ({scannedId}) não pertence ao roteiro atual ou a tag está corrompida.
-                </Text>
-                <TouchableOpacity 
-                  style={styles.retryButton}
-                  onPress={fecharModal}
-                >
-                  <Text style={styles.retryButtonText}>Tentar Novamente</Text>
-                </TouchableOpacity>
-              </View>
             )}
-          </View>
+              </View>
         </View>
       </Modal>
 
@@ -726,7 +726,7 @@ export default function NFCScreen({ route, navigation }) {
       >
         <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
           <View style={styles.cameraHeader}>
-            <TouchableOpacity 
+            <TouchableOpacity
               onPress={() => setIsCameraVisible(false)}
               style={styles.cameraCloseButton}
             >
@@ -735,7 +735,7 @@ export default function NFCScreen({ route, navigation }) {
             <Text style={styles.cameraTitle}>Escanear QR Code</Text>
             <View style={{ width: 40 }} />
           </View>
-          
+
           {isCameraVisible && (
             <View style={styles.cameraContainer}>
               <CameraView
